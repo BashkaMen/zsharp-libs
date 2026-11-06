@@ -1,0 +1,4 @@
+[package]
+name = "zerver"
+version = "0.1.0"
+main = "src/zerver.zs"
