@@ -10,13 +10,15 @@ let private headEnd (buffer: Buffer<u8>) (filled: int) : option<int> =
         i <- i + 1
     if found < 0 then None else Some found
 
-let rec private readHead (buffer: Buffer<u8>) (read: Buffer<u8> -> Task<result<int, string>>) (filled: int) : Task<result<int * int, string>> = taskResult {
+let rec private readHead (buffer: Buffer<u8>) (read: Buffer<u8> -> Task<result<int, string>>) (filled: int) : Task<result<option<int * int>, string>> = taskResult {
     match headEnd buffer filled with
-    | Some e -> return (e, filled)
+    | Some e -> return Some (e, filled)
     | None when filled = Buffer.length buffer -> return! TaskResult.ofResult (Error "request head is larger than the buffer")
     | None ->
         let! n = read buffer.[filled .. Buffer.length buffer - 1]
-        if n = 0 then
+        if n = 0 && filled = 0 then
+            return None
+        else if n = 0 then
             return! TaskResult.ofResult (Error "connection closed before the request head ended")
         else
             return! readHead buffer read (filled + n)
@@ -107,12 +109,15 @@ let private splitUrl (url: string) : string * string =
     | None -> (url, "")
     | Some i -> (String.sub url 0 i, String.sub url (i + 1) (String.length url - i - 1))
 
-let fromStream (buffer: Buffer<u8>) (read: Buffer<u8> -> Task<result<int, string>>) : Task<result<Request, string>> = taskResult {
-    let! (e, filled) = readHead buffer read 0
-    let rest = Buffer.ofArray (Buffer.toArray buffer.[e + 4 .. filled - 1])
-    let! head = TaskResult.ofResult (parseHead (String.ofBytes buffer.[0 .. e - 1]))
-    let! length = TaskResult.ofResult (contentLength head.headers)
-    let (path, query) = splitUrl head.url
-    let request : Request = { method = head.method; path = path; query = query; version = head.version; headers = head.headers; body = body read rest length }
-    return request
+let fromStream (buffer: Buffer<u8>) (read: Buffer<u8> -> Task<result<int, string>>) : Task<result<option<Request>, string>> = taskResult {
+    let! found = readHead buffer read 0
+    match found with
+    | None -> return None
+    | Some (e, filled) ->
+        let rest = Buffer.ofArray (Buffer.toArray buffer.[e + 4 .. filled - 1])
+        let! head = TaskResult.ofResult (parseHead (String.ofBytes buffer.[0 .. e - 1]))
+        let! length = TaskResult.ofResult (contentLength head.headers)
+        let (path, query) = splitUrl head.url
+        let request : Request = { method = head.method; path = path; query = query; version = head.version; headers = head.headers; body = body read rest length }
+        return Some request
 }
