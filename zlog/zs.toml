@@ -1,0 +1,4 @@
+[package]
+name = "zlog"
+version = "0.1.0"
+main = "src/zlog.zs"

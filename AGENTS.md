@@ -6,6 +6,7 @@ its own Z# package in a top-level folder.
 | Package | What |
 |---|---|
 | `zerver/` | HTTP server |
+| `zlog/` | Logging |
 
 ## Working mode
 
