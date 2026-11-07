@@ -103,3 +103,19 @@ let replies (raw: string) : result<list<Reply>, string> =
                     else
                         go (bodyAt + length) ({ status = status; headers = headers; body = String.sub raw bodyAt length } :: acc)
     go 0 []
+
+/// withServer, with zerver's log at Debug: the client's result and every entry logged.
+let withServerLogged (config: ZerverOptions) (handler: share<HttpHandler>) (client: unit -> Task<result<'a, string>>) : Task<result<'a * list<Zlog.Entry>, string>> = task {
+    let entries = ref []
+    let sink : Zlog.Sink = { write = (fun e -> entries.Value <- e :: entries.Value); flush = fun () -> () }
+    let server = serve config handler |> Task.map (fun r ->
+        match r with
+        | Ok () -> Error "zerver stopped before the client was done"
+        | Error e -> Error $"zerver: {e}")
+    let! r =
+        Zlog.LoggerConfig.empty
+        |> Zlog.LoggerConfig.withMinLevel Zlog.Debug
+        |> Zlog.LoggerConfig.withSink sink
+        |> Zlog.LoggerConfig.runWith (fun () -> Task.race server (client ()))
+    return r |> Result.map (fun x -> (x, List.rev entries.Value))
+}

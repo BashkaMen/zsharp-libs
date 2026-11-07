@@ -43,6 +43,8 @@ let handler (req: Http.Request) : Task<Http.Response> = task {
         | Ok n -> return reply 200 (textOf buf n)
         | Error e -> return reply 500 e
     | "/big" -> return reply 200 (repeat 20000 "0123456789")
+    | "/huge" -> return reply 200 (repeat 30000 "0123456789")
+    | "/unicode" -> return reply 200 "юнікод ✓" |> Http.Response.withHeader "x-привіт" (repeat 500 "я") |> Http.Response.withHeader "x-tick" (repeat 300 "✓")
     | "/missing" -> return reply 404 "nope" |> Http.Response.withHeader "x-why" "missing"
     | "/slow" ->
         do! Task.sleep 400
@@ -442,6 +444,172 @@ let timeoutTests = testList "idle timeout" [
         }))
 ]
 
+let reviewTests = testList "review fixes" [
+    t "long non-ASCII response headers arrive whole" (fun () ->
+        expectExchange 39381 "GET /unicode HTTP/1.1\r\nconnection: close\r\n\r\n" (fun rs ->
+            match rs with
+            | [ r ] -> r.body = "юнікод ✓" && header "x-привіт" r = Some (repeat 500 "я") && header "x-tick" r = Some (repeat 300 "✓")
+            | _ -> false))
+    t "non-ASCII headers, then a huge response, then small ones on one connection" (fun () -> task {
+        let! r = sequential 39382 [ "GET /unicode HTTP/1.1\r\n\r\n"; "GET /huge HTTP/1.1\r\n\r\n"; "GET /unicode HTTP/1.1\r\n\r\n"; "GET / HTTP/1.1\r\n\r\n" ]
+        return verify r (fun rs -> List.map (fun r -> String.length r.body) rs = [ 16; 300000; 16; 4 ])
+    })
+    t "idle_timeout 0 waits for a head without a limit" (fun () ->
+        withServer { config 39383 with idle_timeout = 0 } handler (fun () -> task {
+            let! c = connect 39383
+            match c with
+            | Error e -> return Error e
+            | Ok s ->
+                use s = s
+                // longer than any default deadline a 0 could be mistaken for
+                do! Task.sleep 800
+                let! _ = send s "GET /in"
+                do! Task.sleep 500
+                let! _ = send s "fo HTTP/1.1\r\n\r\n"
+                let! first = readUntil 3000 (String.contains "GET|/info") s
+                do! Task.sleep 800
+                let! _ = send s "GET / HTTP/1.1\r\nconnection: close\r\n\r\n"
+                let! rest = readToEnd 3000 s
+                let all = Result.bind (fun a -> rest |> Result.map (fun b -> a + b)) first
+                return verify (all |> Result.bind replies) (fun rs -> List.map (fun r -> r.body) rs = [ "GET|/info||1.1|"; "root" ])
+        }))
+    t "a negative idle_timeout waits without a limit too" (fun () ->
+        withServer { config 39384 with idle_timeout = -1 } handler (fun () -> task {
+            let! c = connect 39384
+            match c with
+            | Error e -> return Error e
+            | Ok s ->
+                use s = s
+                do! Task.sleep 600
+                let! _ = send s "GET / HTTP/1.1\r\nconnection: close\r\n\r\n"
+                let! back = readToEnd 3000 s
+                return verify (back |> Result.bind replies) (one "HTTP/1.1 200 OK" "root")
+        }))
+    t "a body that stops arriving is cut at body_timeout" (fun () ->
+        withServer { config 39385 with body_timeout = 300 } handler (fun () -> task {
+            let! c = connect 39385
+            match c with
+            | Error e -> return Error e
+            | Ok s ->
+                use s = s
+                let start = millis ()
+                let! _ = send s "POST /echo HTTP/1.1\r\ncontent-length: 100\r\n\r\nonly part"
+                let! back = readToEnd 5000 s
+                let took = elapsedSince start
+                return
+                    match back |> Result.bind replies with
+                    | Ok [ r ] when r.status = "HTTP/1.1 500 Internal Server Error" && String.contains "no request body bytes for 300 ms" r.body && took < 2000 -> Ok ()
+                    | other -> Error $"got {show other} after {took} ms"
+        }))
+    t "body_timeout is per read: a slow but steady body is served" (fun () ->
+        withServer { config 39386 with body_timeout = 300 } handler (fun () -> task {
+            let! c = connect 39386
+            match c with
+            | Error e -> return Error e
+            | Ok s ->
+                use s = s
+                let! _ = send s "POST /echo HTTP/1.1\r\ncontent-length: 10\r\nconnection: close\r\n\r\n"
+                for ch in String.chars "0123456789" do
+                    do! Task.sleep 100
+                    let! _ = send s (string ch)
+                    ()
+                let! back = readToEnd 3000 s
+                return verify (back |> Result.bind replies) (one "HTTP/1.1 200 OK" "0123456789")
+        }))
+    t "an unread body that stops arriving is cut at body_timeout" (fun () ->
+        withServer { config 39387 with body_timeout = 300 } handler (fun () -> task {
+            let! c = connect 39387
+            match c with
+            | Error e -> return Error e
+            | Ok s ->
+                use s = s
+                let start = millis ()
+                let! _ = send s "POST /ignore-body HTTP/1.1\r\ncontent-length: 100\r\n\r\nabc"
+                let! back = readToEnd 5000 s
+                let took = elapsedSince start
+                return
+                    match back |> Result.bind replies with
+                    | Ok [ r ] when r.body = "ignored" && took < 2000 -> Ok ()
+                    | other -> Error $"got {show other} after {took} ms"
+        }))
+    t "body_timeout 0 waits for a body without a limit" (fun () ->
+        withServer { config 39388 with body_timeout = 0 } handler (fun () -> task {
+            let! c = connect 39388
+            match c with
+            | Error e -> return Error e
+            | Ok s ->
+                use s = s
+                let! _ = send s "POST /echo HTTP/1.1\r\ncontent-length: 4\r\nconnection: close\r\n\r\nab"
+                do! Task.sleep 700
+                let! _ = send s "cd"
+                let! back = readToEnd 3000 s
+                return verify (back |> Result.bind replies) (one "HTTP/1.1 200 OK" "abcd")
+        }))
+    t "a reset connection is closed quietly, with no 400 and no warning" (fun () -> task {
+        let! r =
+            withServerLogged (config 39389) handler (fun () -> task {
+                let! c = connect 39389
+                match c with
+                | Error e -> return Error e
+                | Ok s ->
+                    let! _ = send s "GET / HTTP/1.1\r\n\r\n"
+                    // zerver answers; closing without reading it makes the kernel reset the
+                    // connection, which zerver sees while waiting for the next head
+                    do! Task.sleep 200
+                    Native.fdClose (let (TcpStream fd) = s in fd)
+                    do! Task.sleep 300
+                    return Ok ()
+            })
+        return
+            match r with
+            | Error e -> Error e
+            | Ok ((), entries) ->
+                let loud = entries |> List.filter (fun e -> e.level = Zlog.Warn || e.level = Zlog.Fail)
+                let gone = entries |> List.exists (fun e -> e.message = "connection gone")
+                if List.isEmpty loud && gone then Ok ()
+                else Error $"warnings {show (List.map (fun (e: Zlog.Entry) -> (e.message, e.fields)) loud)}, gone logged {gone}"
+    })
+    t "a bad request is logged at debug with its reason" (fun () -> task {
+        let! r =
+            withServerLogged (config 39390) handler (fun () -> task {
+                let! c = connect 39390
+                match c with
+                | Error e -> return Error e
+                | Ok s ->
+                    use s = s
+                    let! _ = send s "GET / HTTP/2.0\r\n\r\n"
+                    let! back = readToEnd 3000 s
+                    return back |> Result.bind replies
+            })
+        return
+            match r with
+            | Ok (rs, entries) when isBadRequest rs ->
+                if entries |> List.exists (fun e -> e.level = Zlog.Debug && e.message = "bad request" && e.fields = [ ("error", "unsupported version: HTTP/2.0") ]) then Ok ()
+                else Error $"entries {show (List.map (fun (e: Zlog.Entry) -> (e.message, e.fields)) entries)}"
+            | other -> Error $"got {show (Result.map fst other)}"
+    })
+    t "a client that stops mid-head is a bad request, not a dropped socket" (fun () -> task {
+        let! r =
+            withServerLogged (config 39391) handler (fun () -> task {
+                let! c = connect 39391
+                match c with
+                | Error e -> return Error e
+                | Ok s ->
+                    let! _ = send s "GET / HTTP/1.1\r\nhost: x"
+                    do! Task.sleep 100
+                    Native.fdClose (let (TcpStream fd) = s in fd)
+                    do! Task.sleep 300
+                    return Ok ()
+            })
+        return
+            match r with
+            | Error e -> Error e
+            | Ok ((), entries) ->
+                if entries |> List.exists (fun e -> e.message = "bad request" && e.fields = [ ("error", "connection closed before the request head ended") ]) then Ok ()
+                else Error $"entries {show (List.map (fun (e: Zlog.Entry) -> (e.message, e.fields)) entries)}"
+    })
+]
+
 let concurrencyTests = testList "concurrency" [
     t "fifty connections at once are all answered" (fun () ->
         withServer (config 39371) handler (fun () -> task {
@@ -481,4 +649,4 @@ let concurrencyTests = testList "concurrency" [
 ]
 
 [<Tests>]
-let tests = testList "server" [ basicTests; closeTests; badRequestTests; keepAliveTests; timeoutTests; concurrencyTests ]
+let tests = testList "server" [ basicTests; closeTests; badRequestTests; keepAliveTests; timeoutTests; reviewTests; concurrencyTests ]

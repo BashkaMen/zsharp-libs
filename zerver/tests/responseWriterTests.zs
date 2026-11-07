@@ -162,6 +162,64 @@ let wireTests = testList "wire" [
             | Ok rs -> Error $"{List.length rs} replies"
             | Error e -> Error (String.sub e 0 (min 200 (String.length e)))
     })
+    // String.length counts bytes; were it characters, 600 bytes of Cyrillic counted as 300
+    // would overrun the 96 bytes of slack
+    t "a long non-ASCII header value is written whole" (fun () ->
+        let value = repeat 300 "я"
+        let r = text 200 "ok" |> Http.Response.withHeader "x-ім'я" value
+        expectWire 39235 [ r ] $"HTTP/1.1 200 OK\r\ncontent-length: 2\r\nx-ім'я: {value}\r\n\r\nok")
+    t "many non-ASCII headers with a non-ASCII body" (fun () -> task {
+        let r = List.fold (fun r i -> r |> Http.Response.withHeader $"x-{i}" (repeat 40 "✓я")) (text 200 (repeat 100 "ї")) [ 1 .. 50 ]
+        let! raw = wire 39236 [ r ]
+        return
+            match raw |> Result.bind replies with
+            | Ok [ reply ] when List.length reply.headers = 51 && reply.body = repeat 100 "ї" && header "x-7" reply = Some (repeat 40 "✓я") -> Ok ()
+            | other -> Error $"got {show other}"
+    })
+    t "a response over the kept limit gets a buffer of its own" (fun () -> task {
+        let out = ref (Buffer.create 4096 (u8 0))
+        let big = repeat (Helpers.ResponseWriter.keptBufferLimit * 3) "L"
+        let! raw = writeAll 39237 out [ text 200 big; text 200 "small" ]
+        return
+            match raw |> Result.bind replies with
+            | Ok [ a; b ] when a.body = big && b.body = "small" && Buffer.length out.Value = 4096 -> Ok ()
+            | Ok rs -> Error $"{List.length rs} replies, kept buffer {Buffer.length out.Value}"
+            | Error e -> Error (String.sub e 0 (min 200 (String.length e)))
+    })
+    t "the kept buffer never grows past the limit" (fun () -> task {
+        let out = ref (Buffer.create 16 (u8 0))
+        let limit = Helpers.ResponseWriter.keptBufferLimit
+        let sizes = [ 100; limit / 2; limit - 200; limit; limit + 1; 10 * limit; 50 ]
+        let! raw = writeAll 39238 out (List.map (fun n -> text 200 (repeat n "k")) sizes)
+        return
+            match raw |> Result.bind replies with
+            | Ok rs when List.map (fun r -> String.length r.body) rs = sizes && Buffer.length out.Value <= limit -> Ok ()
+            | Ok rs -> Error $"bodies {List.map (fun r -> String.length r.body) rs}, kept buffer {Buffer.length out.Value}"
+            | Error e -> Error (String.sub e 0 (min 200 (String.length e)))
+    })
+    t "a response just under the limit is rendered in the kept buffer" (fun () -> task {
+        let out = ref (Buffer.create 16 (u8 0))
+        let! raw = writeAll 39239 out [ text 200 (repeat 60000 "k") ]
+        return
+            if Result.isOk raw && Buffer.length out.Value > 60000 && Buffer.length out.Value <= Helpers.ResponseWriter.keptBufferLimit then Ok ()
+            else Error $"kept buffer {Buffer.length out.Value}"
+    })
+    t "a body that writes more than its length is an error, not a panic" (fun () -> task {
+        let body : Http.ResponseBody = { length = 3; write = fun send -> send (bytesOf "too long") 8 }
+        let! r = wire 39240 [ Http.Response.empty () |> Http.Response.withBody body ]
+        return
+            match r with
+            | Error e when String.contains "more than its length" e -> Ok ()
+            | other -> Error $"got {other}"
+    })
+    t "a body that writes less than its length is an error, not a short response" (fun () -> task {
+        let body : Http.ResponseBody = { length = 10; write = fun send -> send (bytesOf "short") 5 }
+        let! r = wire 39241 [ Http.Response.empty () |> Http.Response.withBody body ]
+        return
+            match r with
+            | Error e when String.contains "wrote 5 of its length of 10" e -> Ok ()
+            | other -> Error $"got {other}"
+    })
     t "a write to a closed socket is an error, not a panic" (fun () ->
         pair 39234 (fun fd client -> task {
             Native.fdClose (let (TcpStream c) = client in c) |> ignore

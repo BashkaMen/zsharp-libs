@@ -9,7 +9,11 @@ type ZerverOptions = {
     port: int
     request_buffer_size: int = 16 * 1024
     max_request_size: int = 10_000_000
+    /// How long, in ms, a connection may take to send a request head (the whole head, from
+    /// when zerver starts waiting for it); <= 0 waits without a limit.
     idle_timeout: int = 5000
+    /// How long, in ms, a read of a request body may wait for bytes; <= 0 waits without a limit.
+    body_timeout: int = 30000
     workers: int = Parallel.workers ()
 }
 
@@ -61,43 +65,61 @@ let private waitRead (fd: int) (ms: int) : Task<bool> =
             return which.Value = 2
         }
 
+// How reading a request head ended.
+type private HeadRead =
+    /// The head ends at the index; the buffer is filled up to the second number.
+    | HeadAt of int * int
+    /// Nothing to answer: the peer closed between requests, or the idle timeout passed.
+    | Done
+    /// The head can't be read whole (it doesn't fit the buffer, or the peer stopped sending
+    /// mid-head): answered with 400, then closed.
+    | Unreadable of string
+    /// The socket failed (a reset, say): nothing can be answered.
+    | Gone of string
+
 // One deadline for the whole head: a slow trickle does not reset the idle timeout.
-let private fillHead (fd: int) (buf: Buffer<u8>) (timeoutMs: int) : Task<result<option<int * int>, string>> =
+// A timeout <= 0 waits without one.
+let private fillHead (fd: int) (buf: Buffer<u8>) (timeoutMs: int) : Task<HeadRead> =
     let start = Runtime.ticks ()
     let left () =
         let elapsed = (Runtime.ticks () - start) / u64 1000000
         if elapsed >= u64 timeoutMs then 0 else int (u64 timeoutMs - elapsed)
     let rec go (filled: int) (scanned: int) =
         match RequestParser.headEnd buf scanned filled with
-        | Some e -> Task.ret (Ok (Some (e, filled)))
-        | None when filled = Buffer.length buf -> Task.ret (Error "request head is larger than the buffer")
+        | Some e -> Task.ret (HeadAt (e, filled))
+        | None when filled = Buffer.length buf -> Task.ret (Unreadable "request head is larger than the buffer")
         | None ->
             let n = Native.fdRead fd buf filled (Buffer.length buf - filled)
             if n = wouldBlock then
-                let ms = left ()
-                if ms <= 0 then
-                    Task.ret (Ok None)
+                // waitRead takes 0 as no deadline
+                let ms = if timeoutMs <= 0 then 0 else left ()
+                if timeoutMs > 0 && ms <= 0 then
+                    Task.ret Done
                 else
                     task {
                         let! idle = waitRead fd ms
-                        if idle then return Ok None else return! go filled filled
+                        if idle then return Done else return! go filled filled
                     }
             else if n < 0 then
-                Task.ret (Error (Native.errorText n))
+                Task.ret (Gone (Native.errorText n))
             else if n = 0 && filled = 0 then
-                Task.ret (Ok None)
+                Task.ret Done
             else if n = 0 then
-                Task.ret (Error "connection closed before the request head ended")
+                Task.ret (Unreadable "connection closed before the request head ended")
             else
                 go (filled + n) filled
     go 0 0
 
-let rec private readMore (fd: int) (buf: Buffer<u8>) : Task<result<int, string>> =
+// A body read: waits up to `timeoutMs` for bytes (<= 0: without a limit).
+let rec private readMore (fd: int) (timeoutMs: int) (buf: Buffer<u8>) : Task<result<int, string>> =
     let n = Native.fdRead fd buf 0 (Buffer.length buf)
     if n = wouldBlock then
         task {
-            do! Task.waitFor fd false
-            return! readMore fd buf
+            let! idle = waitRead fd timeoutMs
+            if idle then
+                return Error $"no request body bytes for {timeoutMs} ms"
+            else
+                return! readMore fd timeoutMs buf
         }
     else if n < 0 then
         Task.ret (Error (Native.errorText n))
@@ -110,21 +132,26 @@ let private badRequest () =
 // Every request on the connection runs in this one task. The idle timeout is armed only
 // while the head read is waiting, not as a race around the whole request.
 let private handleRequests (config: ZerverOptions) (handler: HttpHandler) (fd: int) (buffer: Buffer<u8>) (scratch: Buffer<u8>) (noRest: Buffer<u8>) (out: ref<Buffer<u8>>) : Task<result<unit, string>> = task {
-    let read = readMore fd
+    let read = readMore fd config.body_timeout
     let mutable go = true
     let mutable failed : option<string> = None
     while go && Option.isNone failed do
         let! head = fillHead fd buffer config.idle_timeout
         match head with
-        | Error _ ->
+        | Done -> go <- false
+        | Gone e ->
+            Logger.debug (event "connection gone" [ ("error", e) ])
+            go <- false
+        | Unreadable reason ->
+            Logger.debug (event "bad request" [ ("error", reason) ])
             let! written = ResponseWriter.write fd out (badRequest ())
             match written with
             | Error e -> failed <- Some e
             | Ok () -> go <- false
-        | Ok None -> go <- false
-        | Ok (Some (e, filled)) ->
+        | HeadAt (e, filled) ->
             match RequestParser.parse buffer scratch noRest read e filled with
-            | Error _ ->
+            | Error reason ->
+                Logger.debug (event "bad request" [ ("error", reason) ])
                 let! written = ResponseWriter.write fd out (badRequest ())
                 match written with
                 | Error err -> failed <- Some err
