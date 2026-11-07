@@ -1,0 +1,142 @@
+<div align="center">
+
+# zsharp-libs
+
+**An HTTP server, JSON and logging for [Z#](https://github.com/ZigoteProject/zsharp), written from scratch.**
+
+![zs](https://img.shields.io/badge/zs-0.7.0-7c3aed)
+![packages](https://img.shields.io/badge/packages-3-2563eb)
+![platform](https://img.shields.io/badge/tested%20on-macOS%20arm64-111827)
+
+[zerver](zerver/README.md) · [zjson](zjson/README.md) · [zlog](zlog/README.md)
+
+</div>
+
+---
+
+## Quick look
+
+A JSON endpoint on every core, with each request logged:
+
+```fsharp
+open Zerver
+open Zjson
+open Zlog
+
+[<Derive(Serialize, Deserialize)>]
+type Hello = { hello: string }
+
+let handler (req: Http.Request) = task {
+    Logger.info (event "request" [ ("path", req.path) ])
+    match req.path with
+    | "/hello" -> return Http.Response.empty () |> Http.Response.withJsonOf 200 { hello = "world" }
+    | _ -> return Http.Response.empty () |> Http.Response.withCode 404
+}
+
+let main () =
+    let app =
+        LoggerConfig.empty
+        |> LoggerConfig.withSink (Sinks.Console.create Format.text)
+        |> LoggerConfig.runWith (fun () -> Zerver.serve Zerver.defaultConfig handler)
+    match Task.run app with
+    | Error e ->
+        eprintln $"app: {e}"
+        1
+    | Ok () -> 0
+```
+
+```text
+$ curl localhost:8080/hello
+{"hello":"world"}
+
+2026-11-07T15:49:18.173188Z INFO listening host=0.0.0.0 port=8080 workers=18
+2026-11-07T15:49:18.204421Z INFO request path=/hello
+```
+
+## Packages
+
+| | Package | What it gives you |
+|---|---|---|
+| 🌐 | **[zerver](zerver/README.md)** | HTTP/1.1 server with keep-alive and an accept loop on every core (`workers`, the core count by default). Handlers are `Http.Request -> Task<Http.Response>`. |
+| 🧩 | **[zjson](zjson/README.md)** | JSON through `Serialize` / `Deserialize` derives, written straight to bytes and read straight from bytes, with no `Json` tree in between. Errors name where a value didn't fit (`at [1].id`). |
+| 📝 | **[zlog](zlog/README.md)** | Structured logging: `Logger.info`, `warn`, `error` from any task on any thread, context with `Logger.scope`, console and file sinks. |
+
+## Performance
+
+<table>
+<tr><th>zerver, requests/s</th><th>zjson vs std <code>Json</code></th></tr>
+<tr><td>
+
+| route | zerver | Bun | Node | .NET |
+|---|---|---|---|---|
+| `/json` 18 B | 153k | **222k** | 158k | 128k |
+| `/object` 1.4 KB | 152k | **203k** | 138k | 128k |
+| `/list` 141 KB | **41.1k** | 15.5k | 13.3k | 36.8k |
+
+</td><td>
+
+| case | speedup |
+|---|---|
+| write, 1000 users | **3.8×** |
+| write, 100 posts | **4.5×** |
+| read, 1000 users | **1.8×** |
+| read, 100 posts | **1.4×** |
+
+</td></tr>
+</table>
+
+`wrk -t4 -c64 -d10s`, Apple M5 Pro (18 cores), server and `wrk` on one machine. Methods and every
+number: [zerver](zerver/README.md#benchmarks), [zjson](zjson/README.md#benchmarks).
+
+## Getting started
+
+**1. Toolchain.** `zs` 0.7.0, with LLVM 23 or later first on `PATH` (tasks need it; Apple's clang is too old):
+
+```sh
+export PATH=/opt/homebrew/opt/llvm/bin:$PATH
+zs doctor
+```
+
+**2. Dependencies.** Clone this repository next to your project and add the packages by path:
+
+```toml
+[dependencies]
+zerver = { path = "../zsharp-libs/zerver" }
+zjson  = { path = "../zsharp-libs/zjson" }
+zlog   = { path = "../zsharp-libs/zlog" }
+```
+
+Each package's root module is its name: `open Zerver`, `open Zjson`, `open Zlog`.
+
+> A git dependency (`{ git = "…" }`) reads the `zs.toml` at a repository's root, so it can't reach
+> these folders yet: use a path.
+
+**3. Run something.**
+
+```sh
+cd zlog/examples/basic && zs run            # logging to the console and a file
+cd zerver/examples/echo && zs run           # an echo server on :8080
+cd zjson && zs test                         # zjson's tests
+```
+
+## Repository
+
+```text
+zerver/   HTTP server     examples/echo, examples/bench (with Bun, Node and .NET), tests/e2e
+zjson/    JSON            tests/ (read, write, bench)
+zlog/     logging         examples/basic
+```
+
+zerver's end-to-end tests run against the echo example:
+
+```sh
+cd zerver/examples/echo && zs build --release && ./build/echo &
+cd zerver && npm run test:e2e
+```
+
+## Known issues
+
+- zs 0.7.0 crashes on a record with a `share<F>` field. A fix is proposed upstream in
+  [ZigoteProject/zsharp#1](https://github.com/ZigoteProject/zsharp/pull/1); until it lands, the
+  libraries keep `share` functions in parameters and tuples.
+- Measured on macOS arm64 only.
