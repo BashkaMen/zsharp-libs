@@ -6,3 +6,4 @@ main = "src/zapi.zs"
 [dependencies]
 zerver = { path = "../zerver" }
 zjson = { path = "../zjson" }
+taskResult = { path = "../taskResult" }

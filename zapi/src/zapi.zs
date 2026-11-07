@@ -1,5 +1,6 @@
 open Zerver
 open Zjson
+open TaskResult
 
 type Incoming = { request: Http.Request; params: list<string * string> }
 type Raw = { request: Http.Request; params: list<string * string>; body: Buffer<u8> }
@@ -167,17 +168,15 @@ let rec private readInto (body: Http.Body) (all: Buffer<u8>) (chunk: Buffer<u8>)
 let private handle (endpoint: 'req -> Task<result<Reply<'ok>, 'err>>) (incoming: Incoming) : Task<Http.Response> = task {
     let request = incoming.request
     let all = Buffer.create request.body.length (u8 0)
-    let! read = readInto request.body all (Buffer.create 16384 (u8 0)) 0
-    match read with
-    | Error e -> return toResponse (BadRequest e)
-    | Ok () ->
-        match fromRequest { request = request; params = incoming.params; body = all } with
-        | Error response -> return response
-        | Ok req ->
-            let! result = endpoint req
-            match result with
-            | Ok reply -> return render reply
-            | Error e -> return toResponse e
+    let! response = taskResult {
+        do! readInto request.body all (Buffer.create 16384 (u8 0)) 0 |> TaskResult.mapError (fun e -> toResponse (BadRequest e))
+        let! req = TaskResult.ofResult (fromRequest { request = request; params = incoming.params; body = all })
+        let! reply = endpoint req |> TaskResult.mapError toResponse
+        return render reply
+    }
+    match response with
+    | Ok r -> return r
+    | Error r -> return r
 }
 
 type Handler<'ctx> = 'ctx -> Incoming -> Task<Http.Response>

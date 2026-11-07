@@ -7,3 +7,5 @@ main = "src/main.zs"
 zapi = { path = "../.." }
 zerver = { path = "../../../zerver" }
 zjson = { path = "../../../zjson" }
+taskResult = { path = "../../../taskResult" }
+zlog = { path = "../../../zlog" }
