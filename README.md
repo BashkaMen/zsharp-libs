@@ -62,7 +62,7 @@ $ curl localhost:8080/hello
 | 🧩 | **[zjson](zjson/README.md)** | JSON through `Serialize` / `Deserialize` derives, written straight to bytes and read straight from bytes, with no `Json` tree in between. Errors name where a value didn't fit (`at [1].id`). |
 | 📝 | **[zlog](zlog/README.md)** | Structured logging: `Logger.info`, `warn`, `error` from any task on any thread, context with `Logger.scope`, console and file sinks. |
 | 🔗 | **[taskResult](taskResult/README.md)** | A `taskResult { }` builder for `Task<result<_, _>>`: `let!` stops at the first `Error`. |
-| 🐘 | **[zpg](zpg/README.md)** | Postgres through libpq: a pool, parameterized queries, rows into records, transactions. |
+| 🐘 | **[zpg](zpg/README.md)** | Postgres through libpq: a pool, parameterized queries, rows into records, transactions; timestamps, dates, intervals, jsonb through zjson, bytea and arrays. |
 
 ## Performance
 

@@ -9,6 +9,7 @@
 #include <locale.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/socket.h>
@@ -31,13 +32,18 @@ int zpg_send_params(void *conn, const char *sql, int n, const char *const *value
     return PQsendQueryParams((PGconn *)conn, sql, n, NULL, values, NULL, NULL, 0);
 }
 
-// A decimal rendering that doesn't follow LC_NUMERIC, so "1.5" stays "1.5" for the server.
+// The shortest decimal that reads back as the same double (15, 16, then 17 digits), and that
+// doesn't follow LC_NUMERIC, so "1.5" stays "1.5" for the server. 17 digits always round-trip.
 int zpg_format_float(double x, char *buf, int cap) {
     if (cap <= 0) return -1;
     locale_t c = newlocale(LC_NUMERIC_MASK, "C", (locale_t)0);
     if (!c) return -1;
     locale_t old = uselocale(c);
-    int n = snprintf(buf, (size_t)cap, "%.16g", x);
+    int n = -1;
+    for (int digits = 15; digits <= 17; digits++) {
+        n = snprintf(buf, (size_t)cap, "%.*g", digits, x);
+        if (n < 0 || n >= cap || x != x || strtod(buf, NULL) == x) break;
+    }
     uselocale(old);
     freelocale(c);
     return n;

@@ -43,11 +43,53 @@ the task is cancelled. `use conn = …` does the same for a connection you acqui
 | `exec conn sql args` | how many rows the command affected |
 | `connect conninfo` | one connection, not from a pool; `use` closes it |
 
-`args` is a `list<Value>`: `Null`, `Text`, `Int`, `Bool` and `Float`, bound to `$1`, `$2`, …
-A record with `[<Derive(FromRow)>]` reads each field from the column of the same name. A missing
-column takes the field's default, or `None` for an `option`. NULL is `None` for an `option` and
-an error for anything else. `Row.string`, `Row.int`, `Row.int64`, `Row.bool` and `Row.float` read
-one column when you don't want a record. `impl FromCell<T>` teaches a field type of your own.
+`args` is a `list<Value>`, bound to `$1`, `$2`, … A record with `[<Derive(FromRow)>]` reads each
+field from the column of the same name. A missing column takes the field's default, or `None` for
+an `option`. NULL is `None` for an `option` and an error for anything else. Without a record,
+`query` gives `list<Row>`, and `Row.read row "name"` reads one column as any type below
+(`Row.string`, `Row.int`, `Row.int64`, `Row.bool` and `Row.float` are the common ones spelled
+out). `impl FromCell<T>` teaches a field type of your own.
+
+## Types
+
+| Postgres | Parameter (`Value`) | Field type |
+|---|---|---|
+| `text`, `varchar`, `uuid`, `numeric`, … | `Text "…"` | `string` |
+| `int2`, `int4`, `int8` | `Int n` | `int`, `i32`, `i64` |
+| `float4`, `float8` | `Float x` (NaN and ±∞ too) | `f64` |
+| `bool` | `Bool b` | `bool` |
+| `timestamptz` | `Timestamp t` | `DateTime` |
+| `timestamp` | `Timestamp t` (its UTC wall-clock time) | `DateTime` (taken as UTC) |
+| `date` | `Date { year = 2026; month = 11; day = 4 }` | `Date`, or `DateTime` at midnight UTC |
+| `time` | `Time { hour = 8; minute = 30; second = 0; nanos = 0 }` | `TimeOfDay` |
+| `interval` | `Interval duration` | `Interval` (`.duration`) |
+| `json`, `jsonb` | `Value.json x` (zjson's `Serialize`), or `Json "…"` as is | `Jsonb<'a>` (`.value`, zjson's `Deserialize`), or `string` |
+| `bytea` | `Bytes bytes` | `Bytea` (`.bytes`) |
+| `T[]` | `Array [ … ]`, `Array` inside for a dimension more | `list<'a>`, `array<'a>`, `list<option<'a>>` for NULL elements, `list<list<'a>>` |
+| NULL | `Null` | `option<'a>` |
+
+```fsharp
+[<Derive(Serialize, Deserialize)>]
+type Meta = { tags: list<string> }
+
+[<Derive(FromRow)>]
+type Event = { id: int; at: DateTime; day: option<Date>; meta: Jsonb<Meta>; ids: list<int> }
+
+let recent (conn: Conn) (since: DateTime) (ids: list<int>) : Task<result<list<Event>, string>> =
+    query conn "select id, at, day, meta, ids from events where at > $1 and id = any($2)" [
+        Timestamp since
+        Array (List.map Int ids)
+    ]
+```
+
+Parameters go as text with no type of their own, so the server takes the type from where the
+parameter stands; `$1::jsonb` says it outright where it can't tell (`select $1`). A timestamp is
+sent as ISO 8601 in UTC, so a `timestamptz` column stores that moment whatever the session's
+`TimeZone`, and reading one back gives the same moment in any time zone. A `timestamp` without a
+zone stores and gives back UTC wall-clock time.
+
+`Interval`, `Bytea` and `Jsonb` wrap their value because a trait can't tell a `Duration` from an
+`i64`, nor be implemented for `array<u8>` alone.
 
 An error is Postgres's message with its SQLSTATE in front (`42P01 relation "users" does not exist`).
 
@@ -63,10 +105,13 @@ on the pool) closes the idle ones; a connection that's still out is closed when 
 ## Transactions
 
 `transaction conn (fun () -> …)` runs `BEGIN`, then the body. `Ok` commits. `Error` rolls back.
-`begin`, `commit` and `rollback` are the three statements on their own.
+`begin`, `commit` and `rollback` are the three statements on their own. `commit` is an error when
+the server rolled back instead, which is what `COMMIT` does after a statement in the transaction
+failed, even when the body went on and said `Ok`.
 
-Giving a connection back while a transaction is still open closes it, and the server rolls the
-transaction back. The same happens when the task is cancelled.
+A connection given back while a transaction is still open, a `BEGIN` sent with `exec` included,
+is closed rather than handed to the next task, and the server rolls the transaction back. The same
+happens when the task is cancelled.
 
 ## How a query waits
 
@@ -86,9 +131,14 @@ call. A waiter blocked in `Task.waitFor` is woken by one byte on a socket pair.
 
 ## Limitations
 
-- Text format only. A field is a `string`, `bool`, `int`, `i32`, `i64`, `f64` or an `option` of
-  one of those. A timestamp, a json value, a bytea or an array comes back as text if the field is
-  a `string`.
+- Text format. Values are sent and read as Postgres writes them in text. zpg sets `DateStyle` to
+  ISO and `IntervalStyle` to postgres when it connects (if the server's aren't already); changing
+  them in a session, or `bytea_output` to `escape`, makes those columns errors.
+- `DateTime` covers the years 1678 to 2262; `infinity` and BC timestamps are errors. An interval
+  with years or months has no fixed length and is an error (`extract(epoch from …)` reads it as
+  seconds). Postgres keeps microseconds, so a `DateTime` or `Duration` loses its last three digits.
+- Arrays of composite types and ranges come back as text in a `string` field. Arrays with explicit
+  bounds (`[0:1]={…}`) aren't read.
 - One statement per call. Postgres rejects several commands in one parameterized query
   (`42601 cannot insert multiple commands into a prepared statement`). Whatever comes back is
   drained, so the connection can be used again; a later result's rows are not returned.
@@ -97,8 +147,10 @@ call. A waiter blocked in `Task.waitFor` is woken by one byte on a socket pair.
 - One task uses a connection at a time. A second call returns `the connection is already in use`.
 - Cancelling a task while a command is in flight closes that connection rather than reusing it.
   An open transaction is rolled back by the server when the connection closes.
+- Session state (`SET`, temp tables, prepared statements) stays with a pooled connection and
+  reaches whoever borrows it next.
 - Postgres folds an unquoted name to lowercase, so a field `userName` doesn't match a column
-  `username`. Alias it: `select user_name as userName`.
+  `username`. Alias it: `select user_name as "userName"`.
 - Each event loop has one helper thread for `Task.blocking`. Connects on one loop run there one
   at a time. Queries don't.
 - libpq is a dynamic library. The program needs `libpq` at build time (`pkg-config`) and at run

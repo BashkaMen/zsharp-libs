@@ -11,6 +11,12 @@ type Pid = { pid: int }
 type Count = { n: int }
 
 [<Derive(FromRow)>]
+type Num = { x: f64 }
+
+[<Derive(FromRow)>]
+type Xact = { xid: option<string> }
+
+[<Derive(FromRow)>]
 type WithDefault = { id: int; role: string = "guest" }
 
 let private url () =
@@ -50,10 +56,10 @@ let tests =
         test "reads a parameterized row into a record" (fun () -> task {
                 use db = pool 2
                 let! got = Pool.withConnection db (fun conn -> task {
-                        let! dropped = sql conn "drop table if exists zpg_t_read" []
+                        let! dropped = sql conn "drop table if exists pg_temp.zpg_t_read" []
                         dropped?
                         let! created =
-                            sql conn "create table zpg_t_read (id int primary key, name text, note text, active bool, score float8)" []
+                            sql conn "create temp table zpg_t_read (id int primary key, name text, note text, active bool, score float8)" []
                         created?
                         let! inserted =
                             sql conn "insert into zpg_t_read (id, name, note, active, score) values ($1, $2, $3, $4, $5), ($6, $7, $8, $9, $10)" [ Int 1; Text "ada"; Null; Bool true; Float 1.5; Int 2; Text "a'b \"q\""; Text "юникод ✓"; Bool false; Float -0.25 ]
@@ -83,9 +89,9 @@ let tests =
         test "commits and rolls back" (fun () -> task {
                 use db = pool 1
                 let! got = Pool.withConnection db (fun conn -> task {
-                        let! dropped = sql conn "drop table if exists zpg_t_tx" []
+                        let! dropped = sql conn "drop table if exists pg_temp.zpg_t_tx" []
                         dropped?
-                        let! created = sql conn "create table zpg_t_tx (id int primary key)" []
+                        let! created = sql conn "create temp table zpg_t_tx (id int primary key)" []
                         created?
                         let! rolled = transaction conn (fun () -> task {
                                 let! inserted = sql conn "insert into zpg_t_tx (id) values ($1)" [ Int 1 ]
@@ -128,9 +134,9 @@ let tests =
         test "begin and rollback are explicit" (fun () -> task {
                 use db = pool 1
                 let! got = Pool.withConnection db (fun conn -> task {
-                        let! dropped = sql conn "drop table if exists zpg_t_begin" []
+                        let! dropped = sql conn "drop table if exists pg_temp.zpg_t_begin" []
                         dropped?
-                        let! created = sql conn "create table zpg_t_begin (id int primary key)" []
+                        let! created = sql conn "create temp table zpg_t_begin (id int primary key)" []
                         created?
                         let! began = begin conn
                         began?
@@ -214,6 +220,123 @@ let tests =
             assert (n = 1)
             return Ok ()
         })
+
+        test "a float goes to the server and back unchanged" (fun () -> task {
+                use db = pool 1
+                let xs = [ 0.1 + 0.2; 1.0 / 3.0; 4.9e-324; 1.7976931348623157e+308; -2.5; 100.0 ]
+                let! got = Pool.withConnection db (fun conn -> task {
+                        let rec each (rest: list<f64>) (acc: list<f64>) = task {
+                            match rest with
+                            | [] -> return Ok (List.rev acc)
+                            | x :: more ->
+                                let! row = (queryOne conn "select $1::float8 as x" [ Float x ] : Task<result<Num, string>>)
+                                let r = row?
+                                return! each more (r.x :: acc)
+                        }
+                        return! each xs []
+                    })
+                let back = got?
+                assert (back = xs)
+                return Ok ()
+            })
+
+        test "a connection given back mid-transaction is not reused in it" (fun () -> task {
+                use db = pool 1
+                let! first = Pool.withConnection db (fun conn -> task {
+                        let! began = exec conn "begin" []
+                        let _ = began?
+                        // gives the transaction an id
+                        return! exec conn "select pg_current_xact_id()" []
+                    })
+                let _ = first?
+                let! second =
+                    Pool.withConnection db (fun conn ->
+                        (queryOne conn "select pg_current_xact_id_if_assigned()::text as xid" [] : Task<result<Xact, string>>))
+                let x = second?
+                assert (x.xid = None)
+                return Ok ()
+            })
+
+        test "a commit the server turns into a rollback is an error" (fun () -> task {
+                use db = pool 1
+                let! got = Pool.withConnection db (fun conn ->
+                    transaction conn (fun () -> task {
+                        let! failed = exec conn "select 1/0" []
+                        // the error is ignored, so the body says Ok
+                        match failed with
+                        | _ -> return Ok ()
+                    }))
+                match got with
+                | Ok () -> return Error "COMMIT of an aborted transaction should not be Ok"
+                | Error e ->
+                    assert (String.contains "rolled back" e)
+                    return Ok ()
+            })
+
+        test "cancelling an acquire while it connects frees the slot" (fun () -> task {
+                // A listener that never answers: the TCP handshake completes, the startup
+                // message gets no reply, so the connect waits until it is cancelled.
+                // the first free port from 54329, so tests running at once don't collide
+                let rec listen (port: int) =
+                    match Tcp.listen "127.0.0.1" port with
+                    | Ok l -> Ok (l, port)
+                    | Error e -> if port < 54429 then listen (port + 1) else Error e
+                match listen 54329 with
+                | Error e -> return Error e
+                | Ok (listener, port) ->
+                    use l = listener
+                    use db =
+                        match Pool.create $"host=127.0.0.1 port={port} dbname=x user=x connect_timeout=30" { maxSize = 1 } with
+                        | Ok p -> p
+                        | Error e -> panic e
+                    let! first = Task.timeout 200 (Pool.acquire db)
+                    match first with
+                    | Some _ -> return Error "the connect should still have been waiting"
+                    | None ->
+                        assert (Atomic.get db.live = 0)
+                        return Ok ()
+            })
+
+        test "reads many rows" (fun () -> task {
+                use db = pool 1
+                let! got = Pool.withConnection db (fun conn ->
+                    (query conn "select g as n from generate_series(1, 300000) as g" [] : Task<result<list<Count>, string>>))
+                let rows = got?
+                assert (List.length rows = 300000)
+                return Ok ()
+            })
+
+        test "many tasks share a small pool, some cancelled on the way" (fun () -> task {
+                use db = pool 3
+                let one (i: int) = task {
+                    // every third gives up early: while waiting for a slot, connecting, or mid-query
+                    let work = Pool.withConnection db (fun conn -> exec conn "select pg_sleep(0.005), $1::int" [ Int i ])
+                    if i % 3 = 0 then
+                        let! cut = Task.timeout (i % 7 + 1) work
+                        match cut with
+                        | Some (Error e) -> return Error e
+                        | _ -> return Ok ()
+                    else
+                        let! ran = work
+                        match ran with
+                        | Ok 1 -> return Ok ()
+                        | Ok n -> return Error $"one row expected, got {n}"
+                        | Error e -> return Error e
+                }
+                let! all = Task.all (List.init 60 (fun i -> Task.spawn (fun () -> one i)))
+                List.iter (fun (r: result<unit, string>) ->
+                    match r with
+                    | Ok () -> ()
+                    | Error e -> panic e) all
+                assert (Atomic.get db.live <= 3)
+                // and the pool still hands out every slot
+                let! held = Task.timeout 3000 (Task.all (List.init 3 (fun _ -> Pool.withConnection db (fun conn -> exec conn "select pg_sleep(0.05)" []))))
+                match held with
+                | None -> return Error "the pool lost a slot"
+                | Some rs ->
+                    assert (List.forall Result.isOk rs)
+                    return Ok ()
+            })
 
         test "rejects a maxSize below 1" (fun () ->
             match Pool.create (url ()) { maxSize = 0 } with
