@@ -139,9 +139,46 @@ let integer (w: JsonWriter) (n: i64) =
     decimal w n
     afterValue w
 
+let private scaledDigits (a: f64) : int =
+    let mutable k = 0
+    let mutable p = 1.0
+    let mutable found = -1
+    while found < 0 && k <= 15 && a * p < 1.0e15 do
+        if Math.round (a * p) / p = a then
+            found <- k
+        else
+            k <- k + 1
+            p <- p * 10.0
+    found
+
+let private fixedPoint (w: JsonWriter) (x: f64) : bool =
+    let a = if x < 0.0 then -x else x
+    let k = if a >= 0.0001 && a < 1.0e15 then scaledDigits a else -1
+    if k < 0 then
+        false
+    else
+        let mutable p = i64 1
+        for _ in 1 .. k do
+            p <- p * i64 10
+        let m = i64 (Math.round (a * f64 p))
+        if x < 0.0 then
+            put w (u8 45) // -
+        decimal w (m / p)
+        if k > 0 then
+            let at = reserve w (k + 1)
+            let b = w.buf.Value
+            b.[at] <- u8 46 // .
+            let mutable q = m % p
+            for i in 0 .. k - 1 do
+                b.[at + k - i] <- u8 (i64 48 + q % i64 10) // '0' + digit
+                q <- q / i64 10
+            w.len.Value <- at + k + 1
+        true
+
 let float (w: JsonWriter) (x: f64) =
     sep w
-    append w (if x - x = 0.0 then String.bytes (string x) else b"null")
+    if not (fixedPoint w x) then
+        append w (if x - x = 0.0 then String.bytes (string x) else b"null")
     afterValue w
 
 let boolean (w: JsonWriter) (b: bool) =

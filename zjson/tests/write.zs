@@ -52,6 +52,12 @@ let tests =
             same [ u32 4294967295 ]
             same [ u64 0; u64 9223372036854775807; u64 9223372036854775807 * u64 2 + u64 1 ]
             same [ f32 0.5; f32 -1.0 ])
+        test "matches Json.print for floats" (fun () ->
+            same [ 0.0; -0.0; 0.1; 0.2 + 0.1; 1.0 / 3.0; 75000.5; -52.2297; 1.0e15; 1.0e-5; 123456789012345.6; 5.0e-324; 1.7976931348623157e308 ]
+            same (List.init 20000 (fun i -> float (i - 10000) / 7.0))
+            same (List.init 20000 (fun i -> float i * 0.01))
+            same (List.init 20000 (fun i -> 1.0 / float (i + 1)))
+            same (List.init 20000 (fun i -> float i * 1234.5678e-9)))
         test "matches Json.print for a Json tree" (fun () -> same (toJson [ user; tricky ]))
         test "a reused writer starts each document from scratch" (fun () ->
             let w = JsonWriter.create 16
