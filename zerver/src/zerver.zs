@@ -1,5 +1,6 @@
 open Common
 open Helpers
+open Zlog
 
 type HttpHandler = Http.Request -> Task<Http.Response>
 
@@ -21,14 +22,10 @@ let private keepAlive (request: Http.Request) : bool =
     | Http.Http1_1 -> connection <> "close"
     | Http.Http1_0 -> false
 
-let private bodyError (e: Http.BodyReadError) : string =
-    match e with
-    | Http.Unknown text -> text
-
 let rec private drain (body: Http.Body) (buffer: Buffer<u8>) : Task<result<unit, string>> = task {
     let! n = body.read buffer
     match n with
-    | Error e -> return Error (bodyError e)
+    | Error e -> return Error e
     | Ok n when n > 0 -> return! drain body buffer
     | Ok _ -> return Ok ()
 }
@@ -59,7 +56,7 @@ let private connection (config: ZerverOptions) (handler: HttpHandler) (stream: T
     use s = stream
     let! handled = handleRequests config handler (Buffer.create config.request_buffer_size (u8 0)) s
     match handled with
-    | Error e -> eprintln $"connection: {e}"
+    | Error e -> Logger.warn (event "connection failed" [ ("error", e) ])
     | Ok () -> ()
 }
 
@@ -68,7 +65,7 @@ let rec private acceptLoop (config: ZerverOptions) (handler: HttpHandler) (liste
     match accepted with
     | Ok stream -> Task.start scope (connection config handler stream) |> ignore
     | Error e ->
-        eprintln $"accept: {e}"
+        Logger.error (event "accept failed" [ ("error", e) ])
         do! Task.sleep 100
     return! acceptLoop config handler listener scope
 }
@@ -77,7 +74,9 @@ let serve (config: ZerverOptions) (handler: share<HttpHandler>) : Task<result<un
     match Tcp.listen config.host config.port with
     | Error e -> Task.ret (Error e)
     | Ok listener ->
-        let loops = List.init (max 1 config.workers) (fun _ -> Task.spawn (fun () -> Task.scope (acceptLoop config handler listener)))
+        let workers = max 1 config.workers
+        Logger.info (event "listening" [ ("host", config.host); ("port", string config.port); ("workers", string workers) ])
+        let loops = List.init workers (fun _ -> Task.spawn (fun () -> Task.scope (acceptLoop config handler listener)))
         Task.map (fun _ -> Ok ()) (Task.all loops)
 
 let defaultConfig : ZerverOptions = {

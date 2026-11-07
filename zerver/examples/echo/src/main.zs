@@ -1,13 +1,9 @@
 open Zerver
 
-let private readError (e: Http.BodyReadError) =
-    match e with
-    | Http.Unknown text -> text
-
 let rec private pipe (body: Http.Body) (chunk: Buffer<u8>) (send: Http.Send) : Task<result<unit, string>> = task {
     let! n = body.read chunk
     match n with
-    | Error e -> return Error (readError e)
+    | Error e -> return Error e
     | Ok 0 -> return Ok ()
     | Ok n ->
         let! sent = send chunk n
@@ -22,7 +18,11 @@ let handler (req: Http.Request) = task {
 }
 
 let main () =
-  match Task.run (Zerver.serve Zerver.defaultConfig handler) with
+  let logged =
+    Zlog.LoggerConfig.empty
+    |> Zlog.LoggerConfig.withSink (Zlog.Sinks.Console.create Zlog.Format.text)
+    |> Zlog.LoggerConfig.runWith (fun () -> Zerver.serve Zerver.defaultConfig handler)
+  match Task.run logged with
   | Error e ->
     eprintln $"zerver: {e}"
     1

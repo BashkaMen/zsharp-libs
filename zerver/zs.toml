@@ -5,3 +5,4 @@ main = "src/zerver.zs"
 
 [dependencies]
 zjson = { path = "../zjson" }
+zlog = { path = "../zlog" }

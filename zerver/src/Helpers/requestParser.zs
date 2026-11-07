@@ -83,7 +83,7 @@ let private contentLength (headers: list<string * string>) : result<int, string>
 
 let private body (read: Buffer<u8> -> Task<result<int, string>>) (rest: Buffer<u8>) (length: int) : Body =
     let delivered = ref 0
-    let readBody (dest: Buffer<u8>) : Task<result<int, BodyReadError>> = task {
+    let readBody (dest: Buffer<u8>) : Task<result<int, string>> = task {
         let left = length - delivered.Value
         let fromRest = min left (Buffer.length rest - delivered.Value)
         if left = 0 then
@@ -96,8 +96,8 @@ let private body (read: Buffer<u8> -> Task<result<int, string>>) (rest: Buffer<u
         else
             let! n = read dest.[0 .. min left (Buffer.length dest) - 1]
             match n with
-            | Error e -> return Error (Unknown e)
-            | Ok 0 -> return Error (Unknown "connection closed before the body ended")
+            | Error e -> return Error e
+            | Ok 0 -> return Error "connection closed before the body ended"
             | Ok n ->
                 delivered.Value <- delivered.Value + n
                 return Ok n

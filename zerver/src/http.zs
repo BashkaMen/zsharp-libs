@@ -9,11 +9,9 @@ type Head = {
     url: string
 }
 
-type BodyReadError = Unknown of string
-
 type Body = {
     length: int
-    read: Buffer<u8> -> Task<result<int, BodyReadError>>
+    read: Buffer<u8> -> Task<result<int, string>>
 }
 
 type Request = {
