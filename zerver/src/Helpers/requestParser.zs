@@ -229,27 +229,3 @@ let parse (buffer: Buffer<u8>) (scratch: Buffer<u8>) (noRest: Buffer<u8>) (read:
                                     copy
                             let (path, query) = splitUrl url
                             Ok { method = methodOf methodBytes; path = path; query = query; version = version; headers = headers; body = body read rest length }
-
-let rec private readHead (buffer: Buffer<u8>) (read: Buffer<u8> -> Task<result<int, string>>) (filled: int) (scanned: int) : Task<result<option<int * int>, string>> = task {
-    match headEnd buffer scanned filled with
-    | Some e -> return Ok (Some (e, filled))
-    | None when filled = Buffer.length buffer -> return Error "request head is larger than the buffer"
-    | None ->
-        let! n = read buffer.[filled .. Buffer.length buffer - 1]
-        match n with
-        | Error e -> return Error e
-        | Ok 0 when filled = 0 -> return Ok None
-        | Ok 0 -> return Error "connection closed before the request head ended"
-        | Ok n -> return! readHead buffer read (filled + n) filled
-}
-
-let fromStream (buffer: Buffer<u8>) (scratch: Buffer<u8>) (noRest: Buffer<u8>) (read: Buffer<u8> -> Task<result<int, string>>) : Task<result<option<Request>, string>> = task {
-    let! found = readHead buffer read 0 0
-    match found with
-    | Error e -> return Error e
-    | Ok None -> return Ok None
-    | Ok (Some (e, filled)) ->
-        match parse buffer scratch noRest read e filled with
-        | Error e -> return Error e
-        | Ok request -> return Ok (Some request)
-}

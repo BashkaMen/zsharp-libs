@@ -71,7 +71,34 @@ let private render (out: ref<Buffer<u8>>) (response: Http.Response) : int =
         at <- put buf at (String.bytes crlf)
     put buf at (String.bytes crlf)
 
-let write (stream: TcpStream) (out: ref<Buffer<u8>>) (response: Http.Response) : Task<result<unit, string>> = task {
+let private wouldBlock = -1000
+
+// The bytes, in one task: a full write that the socket takes is no further task.
+let private writeAll (fd: int) (buf: Buffer<u8>) (n: int) : Task<result<unit, string>> =
+    let rec go (off: int) =
+        let mutable at = off
+        let mutable blocked = false
+        let mutable err = None
+        while Option.isNone err && not blocked && at < n do
+            let w = Native.fdWrite fd buf at (n - at)
+            if w = wouldBlock then
+                blocked <- true
+            else if w < 0 then
+                err <- Some (Native.errorText w)
+            else
+                at <- at + w
+        match err with
+        | Some e -> Task.ret (Error e)
+        | None when at >= n -> Task.ret (Ok ())
+        | None ->
+            let resume = at
+            task {
+                do! Task.waitFor fd true
+                return! go resume
+            }
+    go 0
+
+let write (fd: int) (out: ref<Buffer<u8>>) (response: Http.Response) : Task<result<unit, string>> = task {
     let at = render out response
     let filled = ref at
     let collect (chunk: Buffer<u8>) (n: int) =
@@ -81,5 +108,5 @@ let write (stream: TcpStream) (out: ref<Buffer<u8>>) (response: Http.Response) :
     let! collected = response.body.write collect
     match collected with
     | Error e -> return Error e
-    | Ok () -> return! Tcp.write stream out.Value filled.Value
+    | Ok () -> return! writeAll fd out.Value filled.Value
 }
