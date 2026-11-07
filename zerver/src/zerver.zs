@@ -25,27 +25,34 @@ let private bodyError (e: Http.BodyReadError) : string =
     match e with
     | Http.Unknown text -> text
 
-let rec private drain (body: Http.Body) (buffer: Buffer<u8>) : Task<result<unit, string>> = taskResult {
-    let! n = body.read buffer |> TaskResult.mapError bodyError
-    if n > 0 then
-        return! drain body buffer
+let rec private drain (body: Http.Body) (buffer: Buffer<u8>) : Task<result<unit, string>> = task {
+    let! n = body.read buffer
+    match n with
+    | Error e -> return Error (bodyError e)
+    | Ok n when n > 0 -> return! drain body buffer
+    | Ok _ -> return Ok ()
 }
 
-let rec private handleRequests (config: ZerverOptions) (handler: HttpHandler) (buffer: Buffer<u8>) (stream: TcpStream) : Task<result<unit, string>> = taskResult {
-    let! parsed = TaskResult.ofTask (Task.timeout config.idle_timeout (RequestParser.fromStream buffer (Tcp.read stream)))
+let rec private handleRequests (config: ZerverOptions) (handler: HttpHandler) (buffer: Buffer<u8>) (stream: TcpStream) : Task<result<unit, string>> = task {
+    let! parsed = Task.timeout config.idle_timeout (RequestParser.fromStream buffer (Tcp.read stream))
     match parsed with
-    | None -> return ()
-    | Some (Ok None) -> return ()
+    | None -> return Ok ()
+    | Some (Ok None) -> return Ok ()
     | Some (Error _) ->
         return! ResponseWriter.write stream (Http.Response.empty () |> Http.Response.withCode 400 |> Http.Response.withHeader "connection" "close")
     | Some (Ok (Some request)) ->
         let keep = keepAlive request
-        let! response = TaskResult.ofTask (handler request)
+        let! response = handler request
         let response = if keep then response else response |> Http.Response.withHeader "connection" "close"
-        do! ResponseWriter.write stream response
-        if keep then
-            do! drain request.body buffer
-            return! handleRequests config handler buffer stream
+        let! written = ResponseWriter.write stream response
+        match written with
+        | Error e -> return Error e
+        | Ok () when not keep -> return Ok ()
+        | Ok () ->
+            let! drained = drain request.body buffer
+            match drained with
+            | Error e -> return Error e
+            | Ok () -> return! handleRequests config handler buffer stream
 }
 
 let private connection (config: ZerverOptions) (handler: HttpHandler) (stream: TcpStream) : Task<unit> = task {
@@ -66,12 +73,12 @@ let rec private acceptLoop (config: ZerverOptions) (handler: HttpHandler) (liste
     return! acceptLoop config handler listener scope
 }
 
-let serve (config: ZerverOptions) (handler: share<HttpHandler>) : Task<result<unit, string>> = taskResult {
-    let! listener = TaskResult.ofResult (Tcp.listen config.host config.port)
-    let loops = List.init (max 1 config.workers) (fun _ -> Task.spawn (fun () -> Task.scope (acceptLoop config handler listener)))
-    let! _ = TaskResult.ofTask (Task.all loops)
-    return ()
-}
+let serve (config: ZerverOptions) (handler: share<HttpHandler>) : Task<result<unit, string>> =
+    match Tcp.listen config.host config.port with
+    | Error e -> Task.ret (Error e)
+    | Ok listener ->
+        let loops = List.init (max 1 config.workers) (fun _ -> Task.spawn (fun () -> Task.scope (acceptLoop config handler listener)))
+        Task.map (fun _ -> Ok ()) (Task.all loops)
 
 let defaultConfig : ZerverOptions = {
     port = 8080

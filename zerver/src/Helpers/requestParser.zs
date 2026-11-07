@@ -10,18 +10,17 @@ let private headEnd (buffer: Buffer<u8>) (filled: int) : option<int> =
         i <- i + 1
     if found < 0 then None else Some found
 
-let rec private readHead (buffer: Buffer<u8>) (read: Buffer<u8> -> Task<result<int, string>>) (filled: int) : Task<result<option<int * int>, string>> = taskResult {
+let rec private readHead (buffer: Buffer<u8>) (read: Buffer<u8> -> Task<result<int, string>>) (filled: int) : Task<result<option<int * int>, string>> = task {
     match headEnd buffer filled with
-    | Some e -> return Some (e, filled)
-    | None when filled = Buffer.length buffer -> return! TaskResult.ofResult (Error "request head is larger than the buffer")
+    | Some e -> return Ok (Some (e, filled))
+    | None when filled = Buffer.length buffer -> return Error "request head is larger than the buffer"
     | None ->
         let! n = read buffer.[filled .. Buffer.length buffer - 1]
-        if n = 0 && filled = 0 then
-            return None
-        else if n = 0 then
-            return! TaskResult.ofResult (Error "connection closed before the request head ended")
-        else
-            return! readHead buffer read (filled + n)
+        match n with
+        | Error e -> return Error e
+        | Ok 0 when filled = 0 -> return Ok None
+        | Ok 0 -> return Error "connection closed before the request head ended"
+        | Ok n -> return! readHead buffer read (filled + n)
 }
 
 let private parseMethod (s: string) : Method =
@@ -84,23 +83,24 @@ let private contentLength (headers: list<string * string>) : result<int, string>
 
 let private body (read: Buffer<u8> -> Task<result<int, string>>) (rest: Buffer<u8>) (length: int) : Body =
     let delivered = ref 0
-    let readBody (dest: Buffer<u8>) : Task<result<int, BodyReadError>> = taskResult {
+    let readBody (dest: Buffer<u8>) : Task<result<int, BodyReadError>> = task {
         let left = length - delivered.Value
         let fromRest = min left (Buffer.length rest - delivered.Value)
         if left = 0 then
-            return 0
+            return Ok 0
         else if fromRest > 0 then
             let n = min fromRest (Buffer.length dest)
             Buffer.blit rest delivered.Value dest 0 n
             delivered.Value <- delivered.Value + n
-            return n
+            return Ok n
         else
-            let! n = read dest.[0 .. min left (Buffer.length dest) - 1] |> TaskResult.mapError Unknown
-            if n = 0 then
-                return! TaskResult.ofResult (Error (Unknown "connection closed before the body ended"))
-            else
+            let! n = read dest.[0 .. min left (Buffer.length dest) - 1]
+            match n with
+            | Error e -> return Error (Unknown e)
+            | Ok 0 -> return Error (Unknown "connection closed before the body ended")
+            | Ok n ->
                 delivered.Value <- delivered.Value + n
-                return n
+                return Ok n
     }
     { length = length; read = readBody }
 
@@ -109,15 +109,17 @@ let private splitUrl (url: string) : string * string =
     | None -> (url, "")
     | Some i -> (String.sub url 0 i, String.sub url (i + 1) (String.length url - i - 1))
 
-let fromStream (buffer: Buffer<u8>) (read: Buffer<u8> -> Task<result<int, string>>) : Task<result<option<Request>, string>> = taskResult {
+let private request (buffer: Buffer<u8>) (read: Buffer<u8> -> Task<result<int, string>>) (e: int) (filled: int) : result<option<Request>, string> =
+    let rest = Buffer.ofArray (Buffer.toArray buffer.[e + 4 .. filled - 1])
+    let head = (parseHead (String.ofBytes buffer.[0 .. e - 1]))?
+    let length = (contentLength head.headers)?
+    let (path, query) = splitUrl head.url
+    Ok (Some { method = head.method; path = path; query = query; version = head.version; headers = head.headers; body = body read rest length })
+
+let fromStream (buffer: Buffer<u8>) (read: Buffer<u8> -> Task<result<int, string>>) : Task<result<option<Request>, string>> = task {
     let! found = readHead buffer read 0
     match found with
-    | None -> return None
-    | Some (e, filled) ->
-        let rest = Buffer.ofArray (Buffer.toArray buffer.[e + 4 .. filled - 1])
-        let! head = TaskResult.ofResult (parseHead (String.ofBytes buffer.[0 .. e - 1]))
-        let! length = TaskResult.ofResult (contentLength head.headers)
-        let (path, query) = splitUrl head.url
-        let request : Request = { method = head.method; path = path; query = query; version = head.version; headers = head.headers; body = body read rest length }
-        return Some request
+    | Error e -> return Error e
+    | Ok None -> return Ok None
+    | Ok (Some (e, filled)) -> return request buffer read e filled
 }

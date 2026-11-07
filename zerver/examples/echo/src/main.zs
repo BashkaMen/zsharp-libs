@@ -4,13 +4,16 @@ let private readError (e: Http.BodyReadError) =
     match e with
     | Http.Unknown text -> text
 
-let rec private pipe (body: Http.Body) (chunk: Buffer<u8>) (send: Http.Send) : Task<result<unit, string>> = taskResult {
-    let! n = body.read chunk |> TaskResult.mapError readError
-    if n = 0 then
-        return ()
-    else
-        do! send chunk n
-        return! pipe body chunk send
+let rec private pipe (body: Http.Body) (chunk: Buffer<u8>) (send: Http.Send) : Task<result<unit, string>> = task {
+    let! n = body.read chunk
+    match n with
+    | Error e -> return Error (readError e)
+    | Ok 0 -> return Ok ()
+    | Ok n ->
+        let! sent = send chunk n
+        match sent with
+        | Error e -> return Error e
+        | Ok () -> return! pipe body chunk send
 }
 
 let handler (req: Http.Request) = task {
