@@ -26,9 +26,9 @@ let main () =
         eprintln $"basic: {e}"
         1
     | Ok file ->
-        Zlog.empty
-        |> Zlog.withMinLevel Zlog.Info
-        |> Zlog.withSink (Sinks.Console.create Format.text)
-        |> Zlog.withSink file
-        |> Zlog.runWith work
+        LoggerConfig.empty
+        |> LoggerConfig.withMinLevel Zlog.Info
+        |> LoggerConfig.withSink (Sinks.Console.create Format.text)
+        |> LoggerConfig.withSink file
+        |> LoggerConfig.runWith work
         |> Task.run
