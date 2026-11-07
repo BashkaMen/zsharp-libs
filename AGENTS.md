@@ -8,6 +8,7 @@ its own Z# package in a top-level folder.
 | `zerver/` | HTTP server |
 | `zlog/` | Logging |
 | `zjson/` | JSON serialization |
+| `zapi/` | Typed routing on top of zerver, in the spirit of minimal APIs |
 
 ## Working mode
 

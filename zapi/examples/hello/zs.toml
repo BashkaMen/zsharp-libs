@@ -1,0 +1,8 @@
+[package]
+name = "hello"
+version = "0.1.0"
+main = "src/main.zs"
+
+[dependencies]
+zapi = { path = "../.." }
+zerver = { path = "../../../zerver" }

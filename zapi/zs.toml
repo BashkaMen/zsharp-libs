@@ -1,0 +1,8 @@
+[package]
+name = "zapi"
+version = "0.1.0"
+main = "src/zapi.zs"
+
+[dependencies]
+zerver = { path = "../zerver" }
+zjson = { path = "../zjson" }
