@@ -30,18 +30,18 @@ let rec private drain (body: Http.Body) (buffer: Buffer<u8>) : Task<result<unit,
     | Ok _ -> return Ok ()
 }
 
-let rec private handleRequests (config: ZerverOptions) (handler: HttpHandler) (buffer: Buffer<u8>) (stream: TcpStream) : Task<result<unit, string>> = task {
+let rec private handleRequests (config: ZerverOptions) (handler: HttpHandler) (buffer: Buffer<u8>) (out: ref<Buffer<u8>>) (stream: TcpStream) : Task<result<unit, string>> = task {
     let! parsed = Task.timeout config.idle_timeout (RequestParser.fromStream buffer (Tcp.read stream))
     match parsed with
     | None -> return Ok ()
     | Some (Ok None) -> return Ok ()
     | Some (Error _) ->
-        return! ResponseWriter.write stream (Http.Response.empty () |> Http.Response.withCode 400 |> Http.Response.withHeader "connection" "close")
+        return! ResponseWriter.write stream out (Http.Response.empty () |> Http.Response.withCode 400 |> Http.Response.withHeader "connection" "close")
     | Some (Ok (Some request)) ->
         let keep = keepAlive request
         let! response = handler request
         let response = if keep then response else response |> Http.Response.withHeader "connection" "close"
-        let! written = ResponseWriter.write stream response
+        let! written = ResponseWriter.write stream out response
         match written with
         | Error e -> return Error e
         | Ok () when not keep -> return Ok ()
@@ -49,12 +49,14 @@ let rec private handleRequests (config: ZerverOptions) (handler: HttpHandler) (b
             let! drained = drain request.body buffer
             match drained with
             | Error e -> return Error e
-            | Ok () -> return! handleRequests config handler buffer stream
+            | Ok () -> return! handleRequests config handler buffer out stream
 }
 
 let private connection (config: ZerverOptions) (handler: HttpHandler) (stream: TcpStream) : Task<unit> = task {
     use s = stream
-    let! handled = handleRequests config handler (Buffer.create config.request_buffer_size (u8 0)) s
+    // One buffer for every response on this connection: the head is written into it in place.
+    let out = ref (Buffer.create 4096 (u8 0))
+    let! handled = handleRequests config handler (Buffer.create config.request_buffer_size (u8 0)) out s
     match handled with
     | Error e -> Logger.warn (event "connection failed" [ ("error", e) ])
     | Ok () -> ()
