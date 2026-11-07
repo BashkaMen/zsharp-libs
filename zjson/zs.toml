@@ -1,0 +1,4 @@
+[package]
+name = "zjson"
+version = "0.1.0"
+main = "src/zjson.zs"
