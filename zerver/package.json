@@ -2,6 +2,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test:e2e": "node --test tests/e2e/"
+    "test:e2e": "node --test tests/e2e/*.test.ts"
   }
 }
