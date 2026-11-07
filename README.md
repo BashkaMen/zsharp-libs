@@ -2,13 +2,13 @@
 
 # zsharp-libs
 
-**An HTTP server, JSON and logging for [Z#](https://github.com/ZigoteProject/zsharp), written from scratch.**
+**An HTTP server, typed endpoints, JSON and logging for [Z#](https://github.com/ZigoteProject/zsharp), written from scratch.**
 
 ![zs](https://img.shields.io/badge/zs-0.7.0-7c3aed)
-![packages](https://img.shields.io/badge/packages-3-2563eb)
+![packages](https://img.shields.io/badge/packages-5-2563eb)
 ![platform](https://img.shields.io/badge/tested%20on-macOS%20arm64-111827)
 
-[zerver](zerver/README.md) · [zjson](zjson/README.md) · [zlog](zlog/README.md)
+[zerver](zerver/README.md) · [zapi](zapi/README.md) · [zjson](zjson/README.md) · [zlog](zlog/README.md) · [taskResult](taskResult/README.md)
 
 </div>
 
@@ -58,8 +58,10 @@ $ curl localhost:8080/hello
 | | Package | What it gives you |
 |---|---|---|
 | 🌐 | **[zerver](zerver/README.md)** | HTTP/1.1 server with keep-alive and an accept loop on every core (`workers`, the core count by default). Handlers are `Http.Request -> Task<Http.Response>`. |
+| 🧭 | **[zapi](zapi/README.md)** | Typed endpoints on top of zerver: a request record bound from path, query, headers and body by a derive, a `Task<result<Reply<_>, _>>` handler, method, path and middleware declared next to it. |
 | 🧩 | **[zjson](zjson/README.md)** | JSON through `Serialize` / `Deserialize` derives, written straight to bytes and read straight from bytes, with no `Json` tree in between. Errors name where a value didn't fit (`at [1].id`). |
 | 📝 | **[zlog](zlog/README.md)** | Structured logging: `Logger.info`, `warn`, `error` from any task on any thread, context with `Logger.scope`, console and file sinks. |
+| 🔗 | **[taskResult](taskResult/README.md)** | A `taskResult { }` builder for `Task<result<_, _>>`: `let!` stops at the first `Error`. |
 
 ## Performance
 
@@ -101,12 +103,14 @@ zs doctor
 
 ```toml
 [dependencies]
-zerver = { path = "../zsharp-libs/zerver" }
-zjson  = { path = "../zsharp-libs/zjson" }
-zlog   = { path = "../zsharp-libs/zlog" }
+zerver     = { path = "../zsharp-libs/zerver" }
+zapi       = { path = "../zsharp-libs/zapi" }
+zjson      = { path = "../zsharp-libs/zjson" }
+zlog       = { path = "../zsharp-libs/zlog" }
+taskResult = { path = "../zsharp-libs/taskResult" }
 ```
 
-Each package's root module is its name: `open Zerver`, `open Zjson`, `open Zlog`.
+Each package's root module is its name: `open Zerver`, `open Zapi`, `open Zjson`, `open Zlog`, `open TaskResult`.
 
 > A git dependency (`{ git = "…" }`) reads the `zs.toml` at a repository's root, so it can't reach
 > these folders yet: use a path.
@@ -116,15 +120,19 @@ Each package's root module is its name: `open Zerver`, `open Zjson`, `open Zlog`
 ```sh
 cd zlog/examples/basic && zs run            # logging to the console and a file
 cd zerver/examples/echo && zs run           # an echo server on :8080
+cd zapi/examples/users && zs run            # typed endpoints on :8080
 cd zjson && zs test                         # zjson's tests
+cd taskResult && zs test                    # taskResult's tests
 ```
 
 ## Repository
 
 ```text
-zerver/   HTTP server     examples/echo, examples/bench (with Bun, Node, .NET and Oxpecker), tests/e2e
-zjson/    JSON            tests/ (read, write, bench)
-zlog/     logging         examples/basic
+zerver/       HTTP server         examples/echo, examples/bench (with Bun, Node, .NET and Oxpecker), tests/e2e
+zapi/         typed endpoints     examples/users
+zjson/        JSON                tests/ (read, write, bench)
+zlog/         logging             examples/basic
+taskResult/   Task<result> CE     tests/
 ```
 
 zerver's end-to-end tests run against the echo example:

@@ -9,8 +9,9 @@ let parse (s: string) : Task<result<int, string>> =
 let ratio (a: string) (b: string) : Task<result<int, string>> = taskResult {
     let! x = parse a
     let! y = parse b
-    if y = 0 then return! error "division by zero"
-    else return x / y
+    match y with
+    | 0 -> return! error "division by zero"
+    | _ -> return x / y
 }
 
 [<Tests>]
