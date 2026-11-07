@@ -330,9 +330,11 @@ derive Deserialize =
                     (JsonReader.endObject r obj)?
                     Ok value
 
-let fromBytes (bytes: span<u8>) : result<'a, string> =
-    let r = JsonReader.create bytes
+let fromBytesWith (maxDepth: int) (bytes: span<u8>) : result<'a, string> =
+    let r = JsonReader.createWith maxDepth bytes
     let value = (deserialize r)?
     if JsonReader.atEnd r then Ok value else JsonReader.fail r "expected the end after the document"
+
+let fromBytes (bytes: span<u8>) : result<'a, string> = fromBytesWith 64 bytes
 
 let fromString (text: string) : result<'a, string> = fromBytes (String.bytes text)

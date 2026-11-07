@@ -3,4 +3,4 @@ type JsonWriter =
       len: ref<int>
       needComma: ref<bool> }
 
-type JsonReader = { src: span<u8>; pos: ref<int> }
+type JsonReader = { src: span<u8>; pos: ref<int>; depth: ref<int>; maxDepth: int }

@@ -100,4 +100,12 @@ let tests =
             match (fromBytes [| u8 34; u8 255; u8 34 |] : result<string, string>) with
             | Error e when String.contains "UTF-8" e -> ()
             | other -> panic $"got {other}")
+        test "limits nesting depth" (fun () ->
+            let nested (n: int) = String.repeat n "[" + String.repeat n "]"
+            sameAsStd (nested 64) asJson
+            fails (nested 65) asJson "nested deeper than 64"
+            fails (nested 100000) asJson "nested deeper than 64"
+            match (fromBytesWith 2 (String.bytes "[[[]]]") : result<Json, string>) with
+            | Error e when String.contains "deeper than 2" e -> ()
+            | other -> panic $"got {other}")
     ]

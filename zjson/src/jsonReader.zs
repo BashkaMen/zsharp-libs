@@ -1,7 +1,10 @@
 open Text
 open Types
 
-let create (bytes: span<u8>) : JsonReader = { src = bytes; pos = ref 0 }
+let createWith (maxDepth: int) (bytes: span<u8>) : JsonReader =
+    { src = bytes; pos = ref 0; depth = ref 0; maxDepth = maxDepth }
+
+let create (bytes: span<u8>) : JsonReader = createWith 64 bytes
 
 let fail (r: JsonReader) (message: string) : result<'a, string> = Error $"{message} at byte {r.pos.Value}"
 
@@ -298,12 +301,22 @@ let skipValue (r: JsonReader) : result<unit, string> =
             Ok ()
         | _ -> fail r "expected a value"
 
-let beginArray (r: JsonReader) : result<unit, string> = expect r 91 "'['" // [
+let private enter (r: JsonReader) : result<unit, string> =
+    if r.depth.Value >= r.maxDepth then
+        fail r $"nested deeper than {r.maxDepth} levels"
+    else
+        r.depth.Value <- r.depth.Value + 1
+        Ok ()
+
+let beginArray (r: JsonReader) : result<unit, string> =
+    (enter r)?
+    expect r 91 "'['" // [
 
 let element (r: JsonReader) (index: int) : result<bool, string> =
     match peek r with
     | 93 -> // ]
         r.pos.Value <- r.pos.Value + 1
+        r.depth.Value <- r.depth.Value - 1
         Ok false
     | _ when index = 0 -> Ok true
     | 44 -> // ,
@@ -321,6 +334,7 @@ let endArray (r: JsonReader) (index: int) : result<unit, string> =
     go index
 
 let beginObject (r: JsonReader) : result<int, string> =
+    (enter r)?
     (expect r 123 "'{'")? // {
     Ok r.pos.Value
 
@@ -391,6 +405,7 @@ let endObject (r: JsonReader) (obj: int) : result<unit, string> =
         let more = (hasMember r obj)?
         if not more then
             r.pos.Value <- r.pos.Value + 1
+            r.depth.Value <- r.depth.Value - 1
             Ok ()
         else
             let _ = (rawKey r)?
