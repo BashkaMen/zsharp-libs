@@ -1,0 +1,6 @@
+[package]
+name = "taskResult"
+version = "0.1.0"
+main = "src/taskResult.zs"
+
+[dependencies]

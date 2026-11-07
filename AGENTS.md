@@ -9,6 +9,7 @@ its own Z# package in a top-level folder.
 | `zlog/` | Logging |
 | `zjson/` | JSON serialization |
 | `zapi/` | Typed routing on top of zerver, in the spirit of minimal APIs |
+| `taskResult/` | `Task<result<_, _>>` helpers |
 
 ## Working mode
 
