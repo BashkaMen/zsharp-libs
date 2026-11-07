@@ -67,11 +67,11 @@ $ curl localhost:8080/hello
 <tr><th>zerver, requests/s</th><th>zjson vs std <code>Json</code></th></tr>
 <tr><td>
 
-| route | zerver | Bun | Node | .NET |
-|---|---|---|---|---|
-| `/json` 18 B | 153k | **222k** | 158k | 128k |
-| `/object` 1.4 KB | 152k | **203k** | 138k | 128k |
-| `/list` 141 KB | **41.1k** | 15.5k | 13.3k | 36.8k |
+| route | zerver | Bun | Node | .NET | Oxpecker |
+|---|---|---|---|---|---|
+| `/json` 18 B | 153k | **222k** | 158k | 128k | 130k |
+| `/object` 1.4 KB | 152k | **203k** | 138k | 128k | 128k |
+| `/list` 141 KB | **41.1k** | 15.5k | 13.3k | 36.8k | 37.4k |
 
 </td><td>
 
@@ -122,7 +122,7 @@ cd zjson && zs test                         # zjson's tests
 ## Repository
 
 ```text
-zerver/   HTTP server     examples/echo, examples/bench (with Bun, Node and .NET), tests/e2e
+zerver/   HTTP server     examples/echo, examples/bench (with Bun, Node, .NET and Oxpecker), tests/e2e
 zjson/    JSON            tests/ (read, write, bench)
 zlog/     logging         examples/basic
 ```
