@@ -10,6 +10,7 @@ its own Z# package in a top-level folder.
 | `zjson/` | JSON serialization |
 | `zapi/` | Typed routing on top of zerver, in the spirit of minimal APIs |
 | `taskResult/` | `Task<result<_, _>>` helpers |
+| `zpg/` | Postgres client (libpq, pool) |
 
 ## Working mode
 
