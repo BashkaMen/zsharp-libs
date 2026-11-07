@@ -30,8 +30,8 @@ let rec private drain (body: Http.Body) (buffer: Buffer<u8>) : Task<result<unit,
     | Ok _ -> return Ok ()
 }
 
-let rec private handleRequests (config: ZerverOptions) (handler: HttpHandler) (buffer: Buffer<u8>) (out: ref<Buffer<u8>>) (stream: TcpStream) : Task<result<unit, string>> = task {
-    let! parsed = Task.timeout config.idle_timeout (RequestParser.fromStream buffer (Tcp.read stream))
+let rec private handleRequests (config: ZerverOptions) (handler: HttpHandler) (buffer: Buffer<u8>) (scratch: Buffer<u8>) (noRest: Buffer<u8>) (out: ref<Buffer<u8>>) (stream: TcpStream) : Task<result<unit, string>> = task {
+    let! parsed = Task.timeout config.idle_timeout (RequestParser.fromStream buffer scratch noRest (Tcp.read stream))
     match parsed with
     | None -> return Ok ()
     | Some (Ok None) -> return Ok ()
@@ -49,14 +49,16 @@ let rec private handleRequests (config: ZerverOptions) (handler: HttpHandler) (b
             let! drained = drain request.body buffer
             match drained with
             | Error e -> return Error e
-            | Ok () -> return! handleRequests config handler buffer out stream
+            | Ok () -> return! handleRequests config handler buffer scratch noRest out stream
 }
 
 let private connection (config: ZerverOptions) (handler: HttpHandler) (stream: TcpStream) : Task<unit> = task {
     use s = stream
     // One buffer for every response on this connection: the head is written into it in place.
     let out = ref (Buffer.create 4096 (u8 0))
-    let! handled = handleRequests config handler (Buffer.create config.request_buffer_size (u8 0)) out s
+    let scratch = Buffer.create 256 (u8 0)
+    let noRest = Buffer.create 0 (u8 0)
+    let! handled = handleRequests config handler (Buffer.create config.request_buffer_size (u8 0)) scratch noRest out s
     match handled with
     | Error e -> Logger.warn (event "connection failed" [ ("error", e) ])
     | Ok () -> ()
