@@ -1,4 +1,4 @@
-open Types
+open Zlog
 
 let create (format: Entry -> string) : Sink =
     let write (entry: Entry) =

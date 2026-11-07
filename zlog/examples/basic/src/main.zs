@@ -25,4 +25,10 @@ let main () =
     | Error e ->
         eprintln $"basic: {e}"
         1
-    | Ok file -> Task.run (run Types.Info [ Sinks.Console.create Format.text; file ] work)
+    | Ok file ->
+        Zlog.empty
+        |> Zlog.withMinLevel Zlog.Info
+        |> Zlog.withSink (Sinks.Console.create Format.text)
+        |> Zlog.withSink file
+        |> Zlog.runWith work
+        |> Task.run

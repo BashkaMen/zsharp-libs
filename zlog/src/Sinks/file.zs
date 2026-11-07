@@ -1,4 +1,4 @@
-open Types
+open Zlog
 
 let private report (written: result<unit, string>) : unit =
     match written with

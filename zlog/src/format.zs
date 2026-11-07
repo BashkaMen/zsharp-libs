@@ -1,4 +1,4 @@
-open Types
+open Zlog
 
 let private levelName (level: Level) : string =
     match level with
