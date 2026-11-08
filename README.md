@@ -73,9 +73,10 @@ $ curl localhost:8080/hello
 
 | route | zerver | Bun | Node | .NET | Oxpecker |
 |---|---|---|---|---|---|
-| `/json` 18 B | 153k | **222k** | 158k | 128k | 130k |
-| `/object` 1.4 KB | 152k | **203k** | 138k | 128k | 128k |
-| `/list` 141 KB | **41.1k** | 15.5k | 13.3k | 36.8k | 37.4k |
+| `/json` 18 B | 154k | **224k** | 178k | 130k | 132k |
+| `/object` 1.4 KB | 155k | **204k** | 156k | 129k | 130k |
+| `/list` 141 KB | **40.6k** | 15.8k | 12.0k | 38.6k | 38.7k |
+| peak RSS, `/list` | **18 MB** | 28 MB | 139 MB | 280 MB | 300 MB |
 
 </td><td>
 
