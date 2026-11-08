@@ -44,17 +44,22 @@ let private putInt (buf: Buffer<u8>) (at: int) (n: int) : int =
             x <- x / 10
         at + digits
 
-// How many bytes the head takes: status, content-length, and each header.
-let private headSize (response: Http.Response) : int =
+// How many bytes the response takes: status, content-length, each header, and the body.
+// String.length counts UTF-8 bytes, the same bytes String.bytes writes. 96 covers the status
+// line (at most 39 bytes, for a 20-digit code), content-length (at most 37) and the blank line.
+let private responseSize (response: Http.Response) : int =
     let mutable n = 96 + response.body.length
     for (name, value) in response.headers do
         n <- n + String.length name + String.length value + 4
     n
 
-// The head, then the body, in `out` (grown and kept for the next response on this connection).
-let private render (out: ref<Buffer<u8>>) (response: Http.Response) : int =
-    ensure out (headSize response)
-    let buf = out.Value
+/// The largest buffer a connection keeps between responses. A larger response is rendered
+/// into a buffer of its own, freed once written, so a keep-alive connection that once served
+/// a large response does not hold that much memory until it closes.
+let keptBufferLimit = 64 * 1024
+
+// The head, then the body, in `buf`, which is large enough.
+let private render (buf: Buffer<u8>) (response: Http.Response) : int =
     let known = status response.code
     let mutable at =
         if known <> "" then
@@ -98,15 +103,30 @@ let private writeAll (fd: int) (buf: Buffer<u8>) (n: int) : Task<result<unit, st
             }
     go 0
 
+/// Writes the response. `out` is the connection's buffer: grown for responses up to
+/// keptBufferLimit and kept for the next one; a larger response gets a buffer of its own.
 let write (fd: int) (out: ref<Buffer<u8>>) (response: Http.Response) : Task<result<unit, string>> = task {
-    let at = render out response
+    let size = responseSize response
+    let buf =
+        if size > keptBufferLimit then
+            Buffer.create size (u8 0)
+        else
+            ensure out size
+            out.Value
+    let at = render buf response
     let filled = ref at
+    let limit = at + response.body.length
     let collect (chunk: Buffer<u8>) (n: int) =
-        Buffer.blit chunk 0 out.Value filled.Value n
-        filled.Value <- filled.Value + n
-        Task.ret (Ok ())
+        if filled.Value + n > limit then
+            Task.ret (Error $"the body wrote more than its length of {response.body.length} bytes")
+        else
+            Buffer.blit chunk 0 buf filled.Value n
+            filled.Value <- filled.Value + n
+            Task.ret (Ok ())
     let! collected = response.body.write collect
     match collected with
     | Error e -> return Error e
-    | Ok () -> return! writeAll fd out.Value filled.Value
+    | Ok () when filled.Value <> limit ->
+        return Error $"the body wrote {filled.Value - at} of its length of {response.body.length} bytes"
+    | Ok () -> return! writeAll fd buf filled.Value
 }

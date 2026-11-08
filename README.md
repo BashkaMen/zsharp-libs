@@ -122,13 +122,14 @@ cd zlog/examples/basic && zs run            # logging to the console and a file
 cd zerver/examples/echo && zs run           # an echo server on :8080
 cd zapi/examples/users && zs run            # typed endpoints on :8080
 cd zjson && zs test                         # zjson's tests
+cd zerver && zs test                        # zerver's tests: parser, response writer, server over loopback
 cd taskResult && zs test                    # taskResult's tests
 ```
 
 ## Repository
 
 ```text
-zerver/       HTTP server         examples/echo, examples/bench (with Bun, Node, .NET and Oxpecker), tests/e2e
+zerver/       HTTP server         examples/echo, examples/bench (with Bun, Node, .NET and Oxpecker), tests/, tests/e2e
 zapi/         typed endpoints     examples/users
 zjson/        JSON                tests/ (read, write, bench)
 zlog/         logging             examples/basic
