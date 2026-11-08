@@ -1,0 +1,12 @@
+[package]
+name = "zhttp"
+version = "0.1.0"
+main = "src/zhttp.zs"
+
+[dependencies]
+zjson = { path = "../zjson" }
+zlog = { path = "../zlog" }
+
+[c]
+sources = ["c/tls.c"]
+pkg-config = ["openssl"]

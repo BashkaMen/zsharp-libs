@@ -1,0 +1,8 @@
+[package]
+name = "get"
+version = "0.1.0"
+main = "src/main.zs"
+
+[dependencies]
+zhttp = { path = "../.." }
+zlog = { path = "../../../zlog" }

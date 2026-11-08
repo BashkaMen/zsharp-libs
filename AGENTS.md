@@ -6,10 +6,12 @@ its own Z# package in a top-level folder.
 | Package | What |
 |---|---|
 | `zerver/` | HTTP server |
+| `zhttp/` | HTTP client |
 | `zlog/` | Logging |
 | `zjson/` | JSON serialization |
 | `zapi/` | Typed routing on top of zerver, in the spirit of minimal APIs |
 | `taskResult/` | `Task<result<_, _>>` helpers |
+| `zconfig/` | Typed configuration from values, env variables and JSON files |
 
 ## Working mode
 
