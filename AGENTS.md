@@ -12,6 +12,7 @@ its own Z# package in a top-level folder.
 | `zapi/` | Typed routing on top of zerver, in the spirit of minimal APIs |
 | `taskResult/` | `Task<result<_, _>>` helpers |
 | `zconfig/` | Typed configuration from values, env variables and JSON files |
+| `zpg/` | Postgres client (libpq, pool) |
 
 ## Working mode
 

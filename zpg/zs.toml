@@ -1,0 +1,11 @@
+[package]
+name = "zpg"
+version = "0.1.0"
+main = "src/zpg.zs"
+
+[dependencies]
+zjson = { path = "../zjson" }
+
+[c]
+sources = ["c/zpg.c"]
+pkg-config = ["libpq"]

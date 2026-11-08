@@ -2,13 +2,13 @@
 
 # zsharp-libs
 
-**An HTTP server and client, typed endpoints, JSON, logging and configuration for [Z#](https://github.com/ZigoteProject/zsharp), written from scratch.**
+**An HTTP server and client, typed endpoints, JSON, logging, configuration and a Postgres client for [Z#](https://github.com/ZigoteProject/zsharp), written from scratch.**
 
 ![zs](https://img.shields.io/badge/zs-0.7.0-7c3aed)
-![packages](https://img.shields.io/badge/packages-7-2563eb)
+![packages](https://img.shields.io/badge/packages-8-2563eb)
 ![platform](https://img.shields.io/badge/tested%20on-macOS%20arm64-111827)
 
-[zerver](zerver/README.md) · [zhttp](zhttp/README.md) · [zapi](zapi/README.md) · [zjson](zjson/README.md) · [zlog](zlog/README.md) · [taskResult](taskResult/README.md) · [zconfig](zconfig/README.md)
+[zerver](zerver/README.md) · [zhttp](zhttp/README.md) · [zapi](zapi/README.md) · [zjson](zjson/README.md) · [zlog](zlog/README.md) · [taskResult](taskResult/README.md) · [zconfig](zconfig/README.md) · [zpg](zpg/README.md)
 
 </div>
 
@@ -64,6 +64,7 @@ $ curl localhost:8080/hello
 | 📝 | **[zlog](zlog/README.md)** | Structured logging: `Logger.info`, `warn`, `error` from any task on any thread, context with `Logger.scope`, console and file sinks. |
 | 🔗 | **[taskResult](taskResult/README.md)** | A `taskResult { }` builder for `Task<result<_, _>>`: `let!` stops at the first `Error`. |
 | ⚙️ | **[zconfig](zconfig/README.md)** | Typed configuration: values, environment variables (`Section__Key`) and JSON files merged by `ConfigReader`, read into a record with a `FromConfig` derive. |
+| 🐘 | **[zpg](zpg/README.md)** | Postgres through libpq: a pool, parameterized queries, rows into records, transactions; timestamps, dates, intervals, jsonb through zjson, bytea and arrays. |
 
 ## Performance
 
@@ -115,9 +116,10 @@ zjson      = { path = "../zsharp-libs/zjson" }
 zlog       = { path = "../zsharp-libs/zlog" }
 taskResult = { path = "../zsharp-libs/taskResult" }
 zconfig    = { path = "../zsharp-libs/zconfig" }
+zpg        = { path = "../zsharp-libs/zpg" }
 ```
 
-Each package's root module is its name: `open Zerver`, `open Zhttp`, `open Zapi`, `open Zjson`, `open Zlog`, `open TaskResult`, `open Zconfig`.
+Each package's root module is its name: `open Zerver`, `open Zhttp`, `open Zapi`, `open Zjson`, `open Zlog`, `open TaskResult`, `open Zconfig`, `open Zpg`.
 
 > A git dependency (`{ git = "…" }`) reads the `zs.toml` at a repository's root, so it can't reach
 > these folders yet: use a path.
@@ -134,6 +136,7 @@ cd zerver && zs test                        # zerver's tests: parser, response w
 cd zhttp && zs test                         # zhttp's tests
 cd taskResult && zs test                    # taskResult's tests
 cd zconfig/examples/basic && zs run         # config from json, values and env
+cd zpg && zs test                           # zpg's tests, against a local Postgres
 ```
 
 ## Repository
@@ -146,6 +149,7 @@ zjson/        JSON                tests/ (read, write, bench)
 zlog/         logging             examples/basic
 taskResult/   Task<result> CE     tests/
 zconfig/      configuration       examples/basic, tests/
+zpg/          Postgres client     examples/basic, tests/ (a running Postgres)
 ```
 
 zerver's end-to-end tests run against the echo example:

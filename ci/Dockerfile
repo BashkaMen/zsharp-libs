@@ -7,7 +7,7 @@ ARG LLVM_VERSION=23
 ARG TARGETARCH
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates curl gnupg lsb-release software-properties-common wget git pkg-config libssl-dev openssl \
+ && apt-get install -y --no-install-recommends ca-certificates curl gnupg lsb-release software-properties-common wget git pkg-config libssl-dev openssl libpq-dev \
  && curl -fsSL https://apt.llvm.org/llvm.sh -o /tmp/llvm.sh \
  && bash /tmp/llvm.sh ${LLVM_VERSION} \
  && apt-get install -y --no-install-recommends libclang-${LLVM_VERSION}-dev \
