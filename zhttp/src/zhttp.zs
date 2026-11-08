@@ -342,7 +342,7 @@ let private connectTo (host: string) (port: int) (until: option<u64>) : Task<res
     if fd < 0 then
         let text = Native.errorText fd
         // the runtime reports a failed lookup as EADDRNOTAVAIL
-        if not (numericHost host) && text = "Cannot assign requested address" then
+        if not (numericHost host) && (text = "Cannot assign requested address" || text = "Can't assign requested address") then
             return Error (Dns $"no address for {host}")
         else
             return Error (Connect $"connection to {host}:{port} failed: {text}")
