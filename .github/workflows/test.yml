@@ -1,0 +1,25 @@
+name: test
+on:
+  push:
+  pull_request:
+  workflow_run:
+    workflows: [ci-image]
+    types: [completed]
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  test:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/bashkamen/zsharp-libs-ci:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - run: ci/test.sh
