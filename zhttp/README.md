@@ -62,7 +62,7 @@ A client is safe to share with other tasks and threads. Its idle connections and
 
 Redirects follow `301`, `302`, `303`, `307` and `308`, up to `maxRedirects` (`0` returns the redirect). `303`, and `301` or `302` of a method other than `GET` or `HEAD`, are sent again as `GET` without the body. `307` and `308` keep the method and the body. A redirect to another host drops `authorization`, `cookie` and `proxy-authorization`.
 
-HTTPS uses OpenSSL. Verification is on unless `withVerification false`: the system CA store, plus `withCaFile` (a PEM file), SNI, and a check that the certificate names the host. The minimum version is TLS 1.2. The link needs OpenSSL (`pkg-config openssl`, usually `libssl-dev`).
+HTTPS uses OpenSSL. Verification is on unless `withVerification false`: the system CA store, plus `withCaFile` (a PEM file), SNI, and a check that the certificate names the host. The minimum version is TLS 1.2. The link needs OpenSSL found by `pkg-config openssl`: `brew install pkgconf openssl` on macOS, `apt install pkg-config libssl-dev` on Debian.
 
 ## What a call does
 
