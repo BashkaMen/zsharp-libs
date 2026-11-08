@@ -28,8 +28,10 @@ Each package:
   (`src/Helpers/requestParser.zs` → `Zerver.Helpers.RequestParser` for a dependent).
 - `examples/<name>/` — a runnable program with its own `zs.toml`, depending on the library by
   path (`zerver = { path = "../.." }`).
-- `tests/` — tests outside Z#, e.g. `zerver/tests/e2e/` (Node, `npm run test:e2e` from `zerver/`,
-  against a server running on `127.0.0.1:8080` or `ZERVER_URL`).
+- `tests/` — `[<Tests>]` files that `zs test` runs, and tests outside Z#, e.g. `zerver/tests/e2e/`
+  (Node, `npm run test:e2e` from `zerver/`, against a server running on `127.0.0.1:8080` or
+  `ZERVER_URL`). A test file is a module named by its file, so it must not share a name with a
+  module of the package (`tests/requestParser.zs` would shadow `RequestParser`).
 
 ## Commands
 
