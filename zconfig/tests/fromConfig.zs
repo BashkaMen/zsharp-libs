@@ -39,6 +39,9 @@ let tests = testList "fromConfig" [
     test "a value overrides the json file" (fun () ->
         let config = ConfigReader.empty |> ConfigReader.withJsonFile "tests/appsettings.json" |> ConfigReader.withValues [ ("Logger:MinimumLevel", "Warn") ] |> ConfigReader.read
         assert (Result.map (fun c -> c.Logger.MinimumLevel) (config : result<EnvConfig, string>) = Ok "Warn"))
+    test "the json file overrides a value registered before it" (fun () ->
+        let config = ConfigReader.empty |> ConfigReader.withValues [ ("Logger:MinimumLevel", "Warn") ] |> ConfigReader.withJsonFile "tests/appsettings.json" |> ConfigReader.read
+        assert (Result.map (fun c -> c.Logger.MinimumLevel) (config : result<EnvConfig, string>) = Ok "Debug"))
     test "names a missing file" (fun () ->
         let config : result<EnvConfig, string> = ConfigReader.empty |> ConfigReader.withJsonFile "missing.json" |> ConfigReader.read
         assert (Result.isError config))
