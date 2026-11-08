@@ -5,10 +5,10 @@
 **An HTTP server, typed endpoints, JSON and logging for [Z#](https://github.com/ZigoteProject/zsharp), written from scratch.**
 
 ![zs](https://img.shields.io/badge/zs-0.7.0-7c3aed)
-![packages](https://img.shields.io/badge/packages-5-2563eb)
+![packages](https://img.shields.io/badge/packages-6-2563eb)
 ![platform](https://img.shields.io/badge/tested%20on-macOS%20arm64-111827)
 
-[zerver](zerver/README.md) · [zapi](zapi/README.md) · [zjson](zjson/README.md) · [zlog](zlog/README.md) · [taskResult](taskResult/README.md)
+[zerver](zerver/README.md) · [zapi](zapi/README.md) · [zjson](zjson/README.md) · [zlog](zlog/README.md) · [taskResult](taskResult/README.md) · [zconfig](zconfig/README.md)
 
 </div>
 
@@ -62,6 +62,7 @@ $ curl localhost:8080/hello
 | 🧩 | **[zjson](zjson/README.md)** | JSON through `Serialize` / `Deserialize` derives, written straight to bytes and read straight from bytes, with no `Json` tree in between. Errors name where a value didn't fit (`at [1].id`). |
 | 📝 | **[zlog](zlog/README.md)** | Structured logging: `Logger.info`, `warn`, `error` from any task on any thread, context with `Logger.scope`, console and file sinks. |
 | 🔗 | **[taskResult](taskResult/README.md)** | A `taskResult { }` builder for `Task<result<_, _>>`: `let!` stops at the first `Error`. |
+| ⚙️ | **[zconfig](zconfig/README.md)** | Typed configuration: values, environment variables (`Section__Key`) and JSON files merged by `ConfigReader`, read into a record with a `FromConfig` derive. |
 
 ## Performance
 
@@ -108,9 +109,10 @@ zapi       = { path = "../zsharp-libs/zapi" }
 zjson      = { path = "../zsharp-libs/zjson" }
 zlog       = { path = "../zsharp-libs/zlog" }
 taskResult = { path = "../zsharp-libs/taskResult" }
+zconfig    = { path = "../zsharp-libs/zconfig" }
 ```
 
-Each package's root module is its name: `open Zerver`, `open Zapi`, `open Zjson`, `open Zlog`, `open TaskResult`.
+Each package's root module is its name: `open Zerver`, `open Zapi`, `open Zjson`, `open Zlog`, `open TaskResult`, `open Zconfig`.
 
 > A git dependency (`{ git = "…" }`) reads the `zs.toml` at a repository's root, so it can't reach
 > these folders yet: use a path.
@@ -123,6 +125,7 @@ cd zerver/examples/echo && zs run           # an echo server on :8080
 cd zapi/examples/users && zs run            # typed endpoints on :8080
 cd zjson && zs test                         # zjson's tests
 cd taskResult && zs test                    # taskResult's tests
+cd zconfig/examples/basic && zs run         # config from json, values and env
 ```
 
 ## Repository
@@ -133,6 +136,7 @@ zapi/         typed endpoints     examples/users
 zjson/        JSON                tests/ (read, write, bench)
 zlog/         logging             examples/basic
 taskResult/   Task<result> CE     tests/
+zconfig/      configuration       examples/basic, tests/
 ```
 
 zerver's end-to-end tests run against the echo example:
