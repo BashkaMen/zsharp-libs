@@ -25,7 +25,7 @@ let idOf (p: cptr) : int = zpg_ptr_to_int p
 let copy (p: cstr) : string =
     if isNull (zpg_cstr p) then "" else String.trimEnd (String.ofCStr p)
 
-let osError (rc: i32) : string = Native.errorText (int rc)
+let osError (rc: i32) : string = unsafe Native.errorText (int rc)
 
 /// A float as text the server accepts, with a '.' whatever the process locale is.
 let formatFloat (x: f64) : string =

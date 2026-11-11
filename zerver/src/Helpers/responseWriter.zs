@@ -82,25 +82,17 @@ let private wouldBlock = -1000
 let private writeAll (fd: int) (buf: Buffer<u8>) (n: int) : Task<result<unit, string>> =
     let rec go (off: int) =
         let mutable at = off
-        let mutable blocked = false
-        let mutable err = None
-        while Option.isNone err && not blocked && at < n do
-            let w = Native.fdWrite fd buf at (n - at)
-            if w = wouldBlock then
-                blocked <- true
-            else if w < 0 then
-                err <- Some (Native.errorText w)
-            else
-                at <- at + w
-        match err with
-        | Some e -> Task.ret (Error e)
-        | None when at >= n -> Task.ret (Ok ())
-        | None ->
-            let resume = at
-            task {
-                do! Task.waitFor fd true
-                return! go resume
-            }
+        while at < n do
+            let w = unsafe Native.fdWrite fd buf at (n - at)
+            if w = wouldBlock then break
+            if w < 0 then return Task.ret (Error (unsafe Native.errorText w))
+            at <- at + w
+        if at >= n then return Task.ret (Ok ())
+        let resume = at
+        task {
+            do! Task.waitFor fd true
+            return! go resume
+        }
     go 0
 
 /// Writes the response. `out` is the connection's buffer: grown for responses up to

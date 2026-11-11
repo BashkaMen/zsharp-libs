@@ -36,13 +36,11 @@ let private expect (r: JsonReader) (b: int) (what: string) : result<unit, string
 let private word (r: JsonReader) (w: span<u8>) : bool =
     let p = r.pos.Value
     let n = Span.length w
-    let mutable same = p + n <= Span.length r.src
+    if p + n > Span.length r.src then return false
     for i in 0 .. n - 1 do
-        if same && r.src.[p + i] <> w.[i] then
-            same <- false
-    if same then
-        r.pos.Value <- p + n
-    same
+        if r.src.[p + i] <> w.[i] then return false
+    r.pos.Value <- p + n
+    true
 
 let skipNull (r: JsonReader) : bool = peek r = 110 && word r b"null" // n
 
@@ -100,14 +98,11 @@ let float (r: JsonReader) : result<f64, string> =
 let private negative (r: JsonReader) (from: int) (stop: int) : option<i64> =
     let lowest = i64 -9223372036854775807 - i64 1
     let mutable n = i64 0
-    let mutable fits = true
     for k in from .. stop - 1 do
         let d = i64 (at r k - 48)
-        if fits && n < (lowest + d) / i64 10 then
-            fits <- false
-        if fits then
-            n <- n * i64 10 - d
-    if fits then Some n else None
+        if n < (lowest + d) / i64 10 then return None
+        n <- n * i64 10 - d
+    Some n
 
 let integer (r: JsonReader) : result<i64, string> =
     skipWs r
@@ -131,6 +126,21 @@ let integer (r: JsonReader) : result<i64, string> =
             r.pos.Value <- start
             fail r "expected an integer that fits i64"
         | Error e -> Error e
+
+/// An integer from 0 to 2^64 - 1, read exactly. Leaves the position where it was on an Error.
+let unsigned (r: JsonReader) : result<u64, string> =
+    skipWs r
+    let start = r.pos.Value
+    let (stop, integral) = numberEnd r
+    if stop < 0 || not integral || at r start = 45 then return fail r "expected an integer that fits u64" // -
+    let highest = u64 0xFFFFFFFFFFFFFFFF
+    let mutable n = u64 0
+    for k in start .. stop - 1 do
+        let d = u64 (at r k - 48)
+        if n > (highest - d) / u64 10 then return fail r "expected an integer that fits u64"
+        n <- n * u64 10 + d
+    r.pos.Value <- stop
+    Ok n
 
 let private hexDigit (b: int) =
     if digit b then b - 48
@@ -360,11 +370,10 @@ let rawKey (r: JsonReader) : result<span<u8>, string> =
     | _ -> fail r "a key that doesn't end"
 
 let private sameBytes (a: span<u8>) (b: span<u8>) : bool =
-    let mutable same = Span.length a = Span.length b
+    if Span.length a <> Span.length b then return false
     for i in 0 .. Span.length a - 1 do
-        if same && a.[i] <> b.[i] then
-            same <- false
-    same
+        if a.[i] <> b.[i] then return false
+    true
 
 let private keyIs (r: JsonReader) (name: span<u8>) : result<bool, string> =
     let quote = r.pos.Value

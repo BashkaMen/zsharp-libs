@@ -47,19 +47,19 @@ let private waitRead (fd: int) (ms: int) : Task<bool> =
         let timer = ref 0
         let which = ref 0
         let start (k: unit -> unit) =
-            timer.Value <- Native.loopTimer ms (fun () ->
+            timer.Value <- unsafe Native.loopTimer ms (fun () ->
                 if which.Value = 0 then
                     which.Value <- 2
-                    Native.loopUnwait fd false
+                    unsafe Native.loopUnwait fd false
                     k ())
-            Native.loopWait fd false (fun () ->
+            unsafe Native.loopWait fd false (fun () ->
                 if which.Value = 0 then
                     which.Value <- 1
-                    Native.loopUntimer timer.Value
+                    unsafe Native.loopUntimer timer.Value
                     k ())
         let stop () =
-            Native.loopUnwait fd false
-            Native.loopUntimer timer.Value
+            unsafe Native.loopUnwait fd false
+            unsafe Native.loopUntimer timer.Value
         task {
             do! Task.fromCallback start stop
             return which.Value = 2
@@ -89,7 +89,7 @@ let private fillHead (fd: int) (buf: Buffer<u8>) (timeoutMs: int) : Task<HeadRea
         | Some e -> Task.ret (HeadAt (e, filled))
         | None when filled = Buffer.length buf -> Task.ret (Unreadable "request head is larger than the buffer")
         | None ->
-            let n = Native.fdRead fd buf filled (Buffer.length buf - filled)
+            let n = unsafe Native.fdRead fd buf filled (Buffer.length buf - filled)
             if n = wouldBlock then
                 // waitRead takes 0 as no deadline
                 let ms = if timeoutMs <= 0 then 0 else left ()
@@ -101,7 +101,7 @@ let private fillHead (fd: int) (buf: Buffer<u8>) (timeoutMs: int) : Task<HeadRea
                         if idle then return Done else return! go filled filled
                     }
             else if n < 0 then
-                Task.ret (Gone (Native.errorText n))
+                Task.ret (Gone (unsafe Native.errorText n))
             else if n = 0 && filled = 0 then
                 Task.ret Done
             else if n = 0 then
@@ -112,7 +112,7 @@ let private fillHead (fd: int) (buf: Buffer<u8>) (timeoutMs: int) : Task<HeadRea
 
 // A body read: waits up to `timeoutMs` for bytes (<= 0: without a limit).
 let rec private readMore (fd: int) (timeoutMs: int) (buf: Buffer<u8>) : Task<result<int, string>> =
-    let n = Native.fdRead fd buf 0 (Buffer.length buf)
+    let n = unsafe Native.fdRead fd buf 0 (Buffer.length buf)
     if n = wouldBlock then
         task {
             let! idle = waitRead fd timeoutMs
@@ -122,7 +122,7 @@ let rec private readMore (fd: int) (timeoutMs: int) (buf: Buffer<u8>) : Task<res
                 return! readMore fd timeoutMs buf
         }
     else if n < 0 then
-        Task.ret (Error (Native.errorText n))
+        Task.ret (Error (unsafe Native.errorText n))
     else
         Task.ret (Ok n)
 

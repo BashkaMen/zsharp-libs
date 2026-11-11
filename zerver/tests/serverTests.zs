@@ -145,7 +145,7 @@ let closeTests = testList "connection close" [
             match first with
             | Error e -> return Error e
             | Ok s ->
-                Native.fdClose (let (TcpStream fd) = s in fd)
+                unsafe Native.fdClose (let (TcpStream fd) = s in fd)
                 let! c = connect 39316
                 match c with
                 | Error e -> return Error e
@@ -215,7 +215,7 @@ let badRequestTests = testList "bad requests" [
             | Error e -> return Error e
             | Ok s ->
                 let! _ = send s "GET / HTT"
-                Native.fdClose (let (TcpStream fd) = s in fd)
+                unsafe Native.fdClose (let (TcpStream fd) = s in fd)
                 let! c = connect 39331
                 match c with
                 | Error e -> return Error e
@@ -233,7 +233,7 @@ let badRequestTests = testList "bad requests" [
             | Ok s ->
                 let! _ = send s "POST /echo HTTP/1.1\r\ncontent-length: 100\r\n\r\nonly a part"
                 do! Task.sleep 50
-                Native.fdClose (let (TcpStream fd) = s in fd)
+                unsafe Native.fdClose (let (TcpStream fd) = s in fd)
                 let! c = connect 39332
                 match c with
                 | Error e -> return Error e
@@ -556,7 +556,7 @@ let reviewTests = testList "review fixes" [
                     // zerver answers; closing without reading it makes the kernel reset the
                     // connection, which zerver sees while waiting for the next head
                     do! Task.sleep 200
-                    Native.fdClose (let (TcpStream fd) = s in fd)
+                    unsafe Native.fdClose (let (TcpStream fd) = s in fd)
                     do! Task.sleep 300
                     return Ok ()
             })
@@ -597,7 +597,7 @@ let reviewTests = testList "review fixes" [
                 | Ok s ->
                     let! _ = send s "GET / HTTP/1.1\r\nhost: x"
                     do! Task.sleep 100
-                    Native.fdClose (let (TcpStream fd) = s in fd)
+                    unsafe Native.fdClose (let (TcpStream fd) = s in fd)
                     do! Task.sleep 300
                     return Ok ()
             })

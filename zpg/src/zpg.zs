@@ -192,12 +192,9 @@ impl FromCell<Jsonb<'a>> =
 
 module Row =
     let private index (row: Row) (name: string) : int =
-        let mutable found = -1
-        let mutable i = 0
-        while found < 0 && i < Array.length row.names do
-            if row.names.[i] = name then found <- i
-            i <- i + 1
-        found
+        for i in 0 .. Array.length row.names - 1 do
+            if row.names.[i] = name then return i
+        -1
 
     /// The column's text, or `None` when it is NULL. `None` when the result has no such column.
     let tryGet (row: Row) (name: string) : option<option<string>> =

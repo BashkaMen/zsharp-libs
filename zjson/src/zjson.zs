@@ -49,7 +49,7 @@ impl Serialize<i8> =
 
 impl Serialize<u64> =
     let serialize (w: JsonWriter) (n: u64) =
-        if n > u64 9223372036854775807 then JsonWriter.float w (f64 n) else JsonWriter.integer w (i64 n)
+        if n > u64 9223372036854775807 then JsonWriter.unsigned w n else JsonWriter.integer w (i64 n)
 
 impl Serialize<u32> =
     let serialize (w: JsonWriter) (n: u32) = JsonWriter.integer w (i64 n)
@@ -90,6 +90,7 @@ impl Serialize<Json> =
         | JNull -> JsonWriter.nul w
         | JBool b -> JsonWriter.boolean w b
         | JInt n -> JsonWriter.integer w n
+        | JUInt n -> JsonWriter.unsigned w n
         | JNumber x -> JsonWriter.float w x
         | JString s -> JsonWriter.str w s
         | JArray xs -> writeItems w xs
@@ -220,10 +221,10 @@ impl Deserialize<u8> =
 impl Deserialize<u64> =
     let deserialize (r: JsonReader) : result<u64, string> =
         let start = r.pos.Value
-        match JsonReader.integer r with
-        | Ok n when n >= i64 0 -> Ok (u64 n)
-        | _ ->
-            r.pos.Value <- start
+        match JsonReader.unsigned r with
+        | Ok n -> Ok n
+        | Error _ ->
+            // 1e3 and 5.0 are integers too
             match JsonReader.float r with
             | Ok x when x >= 0.0 && x < 1.8446744073709552e19 && f64 (u64 x) = x -> Ok (u64 x)
             | _ ->
@@ -275,7 +276,9 @@ impl Deserialize<Json> =
             | Ok n when not (JsonReader.wasFloat r start) -> Ok (JInt n)
             | _ ->
                 r.pos.Value <- start
-                Result.map JNumber (JsonReader.float r)
+                match JsonReader.unsigned r with
+                | Ok n -> Ok (JUInt n)
+                | Error _ -> Result.map JNumber (JsonReader.float r)
 
 derive Deserialize =
     let deserialize r : result<'self, string> =

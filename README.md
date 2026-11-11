@@ -4,7 +4,7 @@
 
 **An HTTP server and client, typed endpoints, JSON, logging, configuration and a Postgres client for [Z#](https://github.com/ZigoteProject/zsharp), written from scratch.**
 
-![zs](https://img.shields.io/badge/zs-0.7.0-7c3aed)
+![zs](https://img.shields.io/badge/zs-0.7.1-7c3aed)
 ![packages](https://img.shields.io/badge/packages-8-2563eb)
 ![platform](https://img.shields.io/badge/tested%20on-macOS%20arm64-111827)
 
@@ -96,7 +96,7 @@ number: [zerver](zerver/README.md#benchmarks), [zjson](zjson/README.md#benchmark
 
 ## Getting started
 
-**1. Toolchain.** `zs` 0.7.0, with LLVM 23 or later first on `PATH` (tasks need it; Apple's clang is too old):
+**1. Toolchain.** `zs` 0.7.1, with LLVM 23 or later first on `PATH` (tasks need it; Apple's clang is too old):
 
 ```sh
 export PATH=/opt/homebrew/opt/llvm/bin:$PATH

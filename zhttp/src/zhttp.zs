@@ -136,7 +136,7 @@ let private prepare (config: Defaults) (req: Request) : Request =
 
 let private closeIdle (idle: Idle) =
     if idle.ssl <> u64 0 then Tls.free idle.ssl
-    Native.fdClose idle.fd
+    unsafe Native.fdClose idle.fd
 
 let private takeIdle (pool: Mutex<list<Idle>>) (key: string) : option<Idle> =
     let found = ref None
@@ -279,14 +279,9 @@ let private readLine (c: Conn) (until: option<u64>) : Task<result<option<string>
     go ()
 
 let private findHeadEnd (buf: Buffer<u8>) (from: int) : option<int> =
-    let mutable i = from
-    let mutable found = -1
-    let n = Buffer.length buf
-    while found < 0 && i + 3 < n do
-        if buf.[i] = u8 13 && buf.[i + 1] = u8 10 && buf.[i + 2] = u8 13 && buf.[i + 3] = u8 10 then
-            found <- i
-        i <- i + 1
-    if found < 0 then None else Some found
+    for i in from .. Buffer.length buf - 4 do
+        if buf.[i] = u8 13 && buf.[i + 1] = u8 10 && buf.[i + 2] = u8 13 && buf.[i + 3] = u8 10 then return Some i
+    None
 
 let private readHead (c: Conn) (until: option<u64>) : Task<result<string, string>> =
     let rec go () = task {
@@ -338,9 +333,9 @@ let private numericHost (host: string) =
     String.length host > 0 && List.forall (fun (c: char) -> Char.isDigit c || c = '.' || c = ':') (String.chars host)
 
 let private connectTo (host: string) (port: int) (until: option<u64>) : Task<result<int, HttpError>> = task {
-    let fd = Native.tcpConnect host port
+    let fd = unsafe Native.tcpConnect host port
     if fd < 0 then
-        let text = Native.errorText fd
+        let text = unsafe Native.errorText fd
         // the runtime reports a failed lookup as EADDRNOTAVAIL
         if not (numericHost host) && (text = "Cannot assign requested address" || text = "Can't assign requested address") then
             return Error (Dns $"no address for {host}")
@@ -350,16 +345,16 @@ let private connectTo (host: string) (port: int) (until: option<u64>) : Task<res
         let! ready = Sock.wait fd true until
         match ready with
         | Error "timeout" ->
-            Native.fdClose fd
+            unsafe Native.fdClose fd
             return Error Timeout
         | Error e ->
-            Native.fdClose fd
+            unsafe Native.fdClose fd
             return Error (Connect e)
         | Ok () ->
-            let err = Native.socketError fd
+            let err = unsafe Native.socketError fd
             if err <> 0 then
-                Native.fdClose fd
-                return Error (Connect (Native.errorText err))
+                unsafe Native.fdClose fd
+                return Error (Connect (unsafe Native.errorText err))
             else
                 return Ok fd
 }
@@ -385,12 +380,12 @@ let private openConn (client: Client) (target: Parse.Target) (fresh: bool) (unti
             else
                 match contextOf client with
                 | Error e ->
-                    Native.fdClose fd
+                    unsafe Native.fdClose fd
                     return Error e
                 | Ok ctx ->
                     match Tls.client ctx fd target.host with
                     | Error e ->
-                        Native.fdClose fd
+                        unsafe Native.fdClose fd
                         return Error (Tls e)
                     | Ok ssl ->
                         let! hs = Tls.handshake ssl fd false until
@@ -398,7 +393,7 @@ let private openConn (client: Client) (target: Parse.Target) (fresh: bool) (unti
                         | Ok () -> return Ok { fd = fd; ssl = ssl; key = key; reused = false; inbox = Buffer.empty; pos = ref 0 }
                         | Error e ->
                             Tls.free ssl
-                            Native.fdClose fd
+                            unsafe Native.fdClose fd
                             return Error (tlsError e)
     }
     if fresh then freshConn () else fromPool ()

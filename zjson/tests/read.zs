@@ -56,6 +56,7 @@ let private asDefault (text: string) : result<WithDefault, string> = fromString 
 let private asJson (text: string) : result<Json, string> = fromString text
 let private asI8 (text: string) : result<i8, string> = fromString text
 let private asI64 (text: string) : result<i64, string> = fromString text
+let private asU64 (text: string) : result<u64, string> = fromString text
 
 [<Tests>]
 let tests =
@@ -65,7 +66,7 @@ let tests =
             roundTrip tricky
             roundTrip [ Dot; Circle 1.5; Rect (2, -3) ]
             roundTrip { owner = user; shapes = [ Dot; Rect (1, -1) ]; byName = Map.ofList [ ("a", 1); ("b\"", 2) ]; byId = Map.ofList [ (1, "x"); (-2, "y") ] }
-            roundTrip [ u64 0; u64 9223372036854775807 ]
+            roundTrip [ u64 0; u64 9223372036854775807; u64 0x8000000000000000; u64 0xFFFFFFFFFFFFFFFF ]
             roundTrip [ i8 -128; i8 127 ])
         test "reads keys in any order and skips unknown ones" (fun () ->
             sameAsStd """{"nick":"n","zzz":[1,{"a":"}]"},null],"tags":[],"score":1,"active":true,"email":"e","name":"n","id":1,"x":{}}""" asUser)
@@ -95,7 +96,10 @@ let tests =
             fails "128" asI8 "fits i8"
             fails "9223372036854775808" asI64 "fits i64"
             sameAsStd "-9223372036854775808" asI64
-            sameAsStd "2.0" asI64)
+            sameAsStd "2.0" asI64
+            sameAsStd "[9223372036854775808,18446744073709551615,18446744073709551616]" asJson
+            fails "18446744073709551616" asU64 "fits u64"
+            fails "-1" asU64 "fits u64")
         test "rejects invalid UTF-8" (fun () ->
             match (fromBytes [| u8 34; u8 255; u8 34 |] : result<string, string>) with
             | Error e when String.contains "UTF-8" e -> ()
