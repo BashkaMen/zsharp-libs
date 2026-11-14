@@ -23,14 +23,14 @@ let wait (fd: int) (write: bool) (until: option<u64>) : Task<result<unit, string
 }
 
 let rec read (fd: int) (buf: Buffer<u8>) (n: int) (until: option<u64>) : Task<result<int, string>> = task {
-    let got = Native.fdRead fd buf 0 n
+    let got = unsafe Native.fdRead fd buf 0 n
     if got = wouldBlock then
         let! ready = wait fd false until
         match ready with
         | Error e -> return Error e
         | Ok () -> return! read fd buf n until
     else if got < 0 then
-        return Error (Native.errorText got)
+        return Error (unsafe Native.errorText got)
     else
         return Ok got
 }
@@ -40,14 +40,14 @@ let rec write (fd: int) (buf: Buffer<u8>) (n: int) (until: option<u64>) : Task<r
         if off >= n then
             return Ok ()
         else
-            let w = Native.fdWrite fd buf off (n - off)
+            let w = unsafe Native.fdWrite fd buf off (n - off)
             if w = wouldBlock then
                 let! ready = wait fd true until
                 match ready with
                 | Error e -> return Error e
                 | Ok () -> return! from off
             else if w < 0 then
-                return Error (Native.errorText w)
+                return Error (unsafe Native.errorText w)
             else
                 return! from (off + w)
     }

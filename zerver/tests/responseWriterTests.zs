@@ -34,11 +34,11 @@ let private writeAll (port: int) (out: ref<Buffer<u8>>) (responses: list<Http.Re
                     match w with
                     | Error e -> failed <- Some e
                     | Ok () -> ()
-            Native.fdClose fd
+            unsafe Native.fdClose fd
             return failed
         }
         let! (failed, read) = Task.both writer (readToEnd 8000 client)
-        Native.fdClose (let (TcpStream c) = client in c)
+        unsafe Native.fdClose (let (TcpStream c) = client in c)
         match failed with
         | Some e -> return Error e
         | None -> return read
@@ -222,13 +222,13 @@ let wireTests = testList "wire" [
     })
     t "a write to a closed socket is an error, not a panic" (fun () ->
         pair 39234 (fun fd client -> task {
-            Native.fdClose (let (TcpStream c) = client in c) |> ignore
+            unsafe Native.fdClose (let (TcpStream c) = client in c) |> ignore
             let out = ref (Buffer.create 4096 (u8 0))
             let big = text 200 (repeat (4 * 1024 * 1024) "x")
             // the first write may land in the socket buffer before the reset is seen
             let! a = Helpers.ResponseWriter.write fd out big
             let! b = Helpers.ResponseWriter.write fd out big
-            Native.fdClose fd
+            unsafe Native.fdClose fd
             return if Result.isError a || Result.isError b then Ok () else Error "both writes succeeded"
         }))
 ]

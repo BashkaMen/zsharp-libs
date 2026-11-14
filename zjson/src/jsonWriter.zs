@@ -139,6 +139,12 @@ let integer (w: JsonWriter) (n: i64) =
     decimal w n
     afterValue w
 
+/// An integer past i64's range (2^63 to 2^64 - 1).
+let unsigned (w: JsonWriter) (n: u64) =
+    sep w
+    append w (String.bytes (string n))
+    afterValue w
+
 let private scaledDigits (a: f64) : int =
     let mutable k = 0
     let mutable p = 1.0

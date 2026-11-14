@@ -9,23 +9,17 @@ let private question = u8 63
 // Index of the blank line that ends the head, or None. `from` is how far a previous
 // scan already got, so a head that arrives in several reads is not searched from 0 again.
 let headEnd (buffer: Buffer<u8>) (from: int) (filled: int) : option<int> =
-    let mutable i = if from > 3 then from - 3 else 0
-    let mutable found = -1
-    while found < 0 && i + 3 < filled do
-        if buffer.[i] = cr && buffer.[i + 1] = lf && buffer.[i + 2] = cr && buffer.[i + 3] = lf then
-            found <- i
-        i <- i + 1
-    if found < 0 then None else Some found
+    for i in max 0 (from - 3) .. filled - 4 do
+        if buffer.[i] = cr && buffer.[i + 1] = lf && buffer.[i + 2] = cr && buffer.[i + 3] = lf then return Some i
+    None
 
 let private spanEq (s: span<u8>) (lit: string) : bool =
     let n = String.length lit
     let b = String.bytes lit
-    let mutable ok = Span.length s = n
-    let mutable i = 0
-    while ok && i < n do
-        ok <- s.[i] = b.[i]
-        i <- i + 1
-    ok
+    if Span.length s <> n then return false
+    for i in 0 .. n - 1 do
+        if s.[i] <> b.[i] then return false
+    true
 
 let private methodOf (s: span<u8>) : Method =
     if spanEq s "GET" then Get
@@ -42,22 +36,14 @@ let private versionOf (s: span<u8>) : result<Version, string> =
     else Error $"unsupported version: {String.ofBytes s}"
 
 let private findByte (s: span<u8>) (b: u8) : int =
-    let n = Span.length s
-    let mutable i = 0
-    let mutable found = -1
-    while found < 0 && i < n do
-        if s.[i] = b then found <- i
-        i <- i + 1
-    found
+    for i in 0 .. Span.length s - 1 do
+        if s.[i] = b then return i
+    -1
 
 let private findCrlf (s: span<u8>) (from: int) : int =
-    let n = Span.length s
-    let mutable i = from
-    let mutable found = -1
-    while found < 0 && i + 1 < n do
-        if s.[i] = cr && s.[i + 1] = lf then found <- i
-        i <- i + 1
-    found
+    for i in from .. Span.length s - 2 do
+        if s.[i] = cr && s.[i + 1] = lf then return i
+    -1
 
 let private isSpace (b: u8) = b = u8 32 || b = u8 9 || b = u8 10 || b = u8 13
 
@@ -171,19 +157,16 @@ let private body (read: Buffer<u8> -> Task<result<int, string>>) (rest: Buffer<u
 let private headersOf (scratch: Buffer<u8>) (head: span<u8>) (from: int) : result<list<string * string>, string> =
     let mutable p = from
     let mutable acc = []
-    let mutable err = None
     let n = Span.length head
-    while Option.isNone err && p < n do
+    while p < n do
         let nl = findCrlf head p
         let lineEnd = if nl < 0 then n else nl
         let line = if lineEnd = p then head.[p .. p - 1] else head.[p .. lineEnd - 1]
         match parseHeaderLine scratch line with
-        | Error e -> err <- Some e
+        | Error e -> return Error e
         | Ok h -> acc <- h :: acc
         p <- if nl < 0 then n else nl + 2
-    match err with
-    | Some e -> Error e
-    | None -> Ok (List.rev acc)
+    Ok (List.rev acc)
 
 let private splitUrl (url: span<u8>) : string * string =
     let q = findByte url question

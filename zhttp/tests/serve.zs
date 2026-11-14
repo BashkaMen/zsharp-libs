@@ -205,20 +205,20 @@ let private talk (link: Link) : Task<unit> = task {
 let private serve (fd: int) (ctx: u64) : Task<unit> = task {
     if ctx = u64 0 then
         do! talk { fd = fd; ssl = u64 0 }
-        Native.fdClose fd
+        unsafe Native.fdClose fd
     else
         match Tls.server ctx fd with
-        | Error _ -> Native.fdClose fd
+        | Error _ -> unsafe Native.fdClose fd
         | Ok ssl ->
             let! hs = Tls.handshake ssl fd true None
             match hs with
             | Error _ ->
                 Tls.free ssl
-                Native.fdClose fd
+                unsafe Native.fdClose fd
             | Ok () ->
                 do! talk { fd = fd; ssl = ssl }
                 Tls.free ssl
-                Native.fdClose fd
+                unsafe Native.fdClose fd
 }
 
 let rec private acceptLoop (scope: Scope) (listener: TcpListener) (ctx: u64) : Task<unit> = task {
@@ -237,7 +237,7 @@ let run (cert: option<string * string>) (body: int -> Task<unit>) : Task<unit> =
     | Error e -> return panic $"listen: {e}"
     | Ok listener ->
         let (TcpListener fd) = listener
-        let port = Native.socketPort fd
+        let port = unsafe Native.socketPort fd
         if port <= 0 then
             panic $"no port: {port}"
         let ctx =
@@ -253,7 +253,7 @@ let run (cert: option<string * string>) (body: int -> Task<unit>) : Task<unit> =
             Task.cancel scope
             return ()
         })
-        Native.fdClose fd
+        unsafe Native.fdClose fd
         if ctx <> u64 0 then Tls.freeContext ctx
         return ()
 }

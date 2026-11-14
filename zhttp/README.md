@@ -102,4 +102,4 @@ cd zhttp/examples/get && zs run
 cd zhttp/examples/get && zs run -- http://127.0.0.1:8080/echo
 ```
 
-`zs` 0.7.0, with LLVM 23 or later first on `PATH`. The example logs through zlog and prints the status and the body.
+`zs` 0.7.1, with LLVM 23 or later first on `PATH`. The example logs through zlog and prints the status and the body.

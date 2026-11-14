@@ -12,6 +12,7 @@ let rec private flatten (path: string) (json: Json) : list<string * string> =
     | JArray items -> items |> List.mapi (fun i x -> flatten (at (string i)) x) |> List.concat
     | JString s -> [ (path, s) ]
     | JInt n -> [ (path, string n) ]
+    | JUInt n -> [ (path, string n) ]
     | JNumber x -> [ (path, string x) ]
     | JBool b -> [ (path, if b then "true" else "false") ]
     | JNull -> []
