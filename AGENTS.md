@@ -13,6 +13,7 @@ its own Z# package in a top-level folder.
 | `taskResult/` | `Task<result<_, _>>` helpers |
 | `zconfig/` | Typed configuration from values, env variables and JSON files |
 | `zpg/` | Postgres client (libpq, pool) |
+| `zbrowser/` | Chrome automation over the DevTools Protocol (API skeleton) |
 
 ## Working mode
 

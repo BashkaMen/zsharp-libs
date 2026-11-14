@@ -1,0 +1,7 @@
+[package]
+name = "zbrowser"
+version = "0.1.0"
+main = "src/zbrowser.zs"
+
+[dependencies]
+zjson = { path = "../zjson" }

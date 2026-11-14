@@ -5,10 +5,10 @@
 **An HTTP server and client, typed endpoints, JSON, logging, configuration and a Postgres client for [Z#](https://github.com/ZigoteProject/zsharp), written from scratch.**
 
 ![zs](https://img.shields.io/badge/zs-0.7.1-7c3aed)
-![packages](https://img.shields.io/badge/packages-8-2563eb)
+![packages](https://img.shields.io/badge/packages-9-2563eb)
 ![platform](https://img.shields.io/badge/tested%20on-macOS%20arm64-111827)
 
-[zerver](zerver/README.md) · [zhttp](zhttp/README.md) · [zapi](zapi/README.md) · [zjson](zjson/README.md) · [zlog](zlog/README.md) · [taskResult](taskResult/README.md) · [zconfig](zconfig/README.md) · [zpg](zpg/README.md)
+[zerver](zerver/README.md) · [zhttp](zhttp/README.md) · [zapi](zapi/README.md) · [zjson](zjson/README.md) · [zlog](zlog/README.md) · [taskResult](taskResult/README.md) · [zconfig](zconfig/README.md) · [zpg](zpg/README.md) · [zbrowser](zbrowser/README.md)
 
 </div>
 
@@ -65,6 +65,7 @@ $ curl localhost:8080/hello
 | 🔗 | **[taskResult](taskResult/README.md)** | A `taskResult { }` builder for `Task<result<_, _>>`: `let!` stops at the first `Error`. |
 | ⚙️ | **[zconfig](zconfig/README.md)** | Typed configuration: values, environment variables (`Section__Key`) and JSON files merged by `ConfigReader`, read into a record with a `FromConfig` derive. |
 | 🐘 | **[zpg](zpg/README.md)** | Postgres through libpq: a pool, parameterized queries, rows into records, transactions; timestamps, dates, intervals, jsonb through zjson, bytea and arrays. |
+| 🧪 | **[zbrowser](zbrowser/README.md)** | Chrome and Chromium through the DevTools Protocol, like Puppeteer: pages, navigation, JavaScript, clicks and typing, screenshots. API skeleton so far. |
 
 ## Performance
 
@@ -150,6 +151,7 @@ zlog/         logging             examples/basic
 taskResult/   Task<result> CE     tests/
 zconfig/      configuration       examples/basic, tests/
 zpg/          Postgres client     examples/basic, tests/ (a running Postgres)
+zbrowser/     Browser automation  examples/screenshot (API skeleton)
 ```
 
 zerver's end-to-end tests run against the echo example:
